@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: api
+
+  # Java 21 가상 스레드 — I/O 대기가 많은 REST 백엔드에 적합
+  threads:
+    virtual:
+      enabled: true
+
+  # 프레임워크 기본 에러(400/405/415 등)도 ProblemDetail(RFC 9457)로 통일
+  mvc:
+    problemdetails:
+      enabled: true
+
+  # PostgreSQL — 접속 정보는 환경변수로 주입, 로컬 기본값 제공
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/runmap}
+    username: ${DB_USERNAME:runmap}
+    password: ${DB_PASSWORD:runmap}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    # 자바 필드(createdAt) ↔ DB 컬럼(created_at) 매핑은 Spring Boot 기본
+    # CamelCaseToUnderscoresNamingStrategy가 담당 — 별도 설정 불필요
+    hibernate:
+      # 로컬 개발 단계용. 공유/운영 환경 전에 Flyway/Liquibase + validate로 전환할 것
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+# 운영/장애 알림에 꼭 필요한 엔드포인트만 노출
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
