@@ -1,0 +1,11 @@
+# 테스트 전용 설정 — H2 인메모리 DB (Docker/로컬 Postgres 없이 실행)
+# 운영/로컬 개발은 application.yml(PostgreSQL)을 그대로 사용한다.
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
