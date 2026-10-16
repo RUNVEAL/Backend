@@ -35,27 +35,45 @@ checkstyle {
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter-actuator'
-	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	implementation 'org.springframework.boot:spring-boot-starter-security'
-	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	// 웹 / API
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
-	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
-	compileOnly 'org.projectlombok:lombok'
-	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0' // Swagger/OpenAPI
+
+	// 영속성 (JPA + PostgreSQL)
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	runtimeOnly 'org.postgresql:postgresql'
+
+	// 보안
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+
+	// 운영 (모니터링)
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+	// Lombok
+	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
-	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
+
+	// 개발 편의
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+	// 테스트
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-	testRuntimeOnly 'com.h2database:h2'
-	testCompileOnly 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
+	testRuntimeOnly 'com.h2database:h2' // 테스트용 인메모리 DB
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+// 로컬 개발 실행(bootRun)은 local 프로파일을 자동 활성화 → application-local.yml 사용
+tasks.named('bootRun') {
+	systemProperty 'spring.profiles.active', 'local'
 }
