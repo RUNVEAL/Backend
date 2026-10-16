@@ -21,13 +21,19 @@
 | 규칙 검사 | `./gradlew checkstyleMain checkstyleTest` |
 
 ### 로컬 DB (앱 실행용)
-```
-brew install postgresql@16 && brew services start postgresql@16
-createdb runmap
-```
-- 접속 정보는 환경변수로 덮어씀: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` (기본 `localhost:5432/runmap`, `runmap`/`runmap`)
+1. PostgreSQL 설치·실행 (예: `brew install postgresql@16 && brew services start postgresql@16`)
+2. DB 생성: `createdb runmap`
+3. `src/main/resources/application-local.yml` 작성 (gitignore됨 — 각자 본인 DB 계정으로):
+   ```yaml
+   spring:
+     datasource:
+       url: jdbc:postgresql://localhost:5432/runmap
+       username: <본인 DB 유저>
+       password: <비번, 로컬 trust면 "">
+   ```
+- `./gradlew bootRun`은 **`local` 프로파일을 자동 활성화**해 `application-local.yml`을 읽음. (IntelliJ에서 main을 직접 실행하면 run config의 Active profiles에 `local` 지정)
 - `ddl-auto`는 로컬 `update`. 운영 전 Flyway/Liquibase + `validate`로 전환할 것
-- 테스트는 H2(`MODE=PostgreSQL`). PostgreSQL 전용 기능 테스트가 필요해지면 그 테스트만 별도 전략으로
+- 테스트는 H2(`MODE=PostgreSQL`, `test` 프로파일) — Docker·DB 불필요
 
 ## 코드 스타일
 - 포맷은 Spotless가 자동 정리 (설정은 `build.gradle`). 커밋 전 `./gradlew spotlessApply`
