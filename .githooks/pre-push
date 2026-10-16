@@ -1,0 +1,20 @@
+#!/bin/sh
+#
+# push 전에 테스트를 실행한다.
+# 변경이 없으면 Gradle 이 up-to-date 로 빠르게 끝난다.
+#
+# 참고: Testcontainers 통합 테스트는 Docker 가 떠 있어야 한다.
+#       급할 때는 git push --no-verify 로 건너뛸 수 있다.
+
+set -e
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+echo "[pre-push] 테스트 실행 중... (./gradlew test)"
+if ! ./gradlew test --quiet; then
+    echo "[pre-push] 테스트에 실패했습니다. 고친 뒤 다시 push 하세요."
+    exit 1
+fi
+
+echo "[pre-push] 통과했습니다."

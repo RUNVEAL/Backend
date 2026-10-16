@@ -1,0 +1,92 @@
+#!/bin/sh
+#
+# 커밋 메시지가 프로젝트 커밋 컨벤션을 따르는지 검사한다.
+#   규칙 출처: spring-backend-conventions.md 8장 (Conventional Commits)
+#   형식: <type>(<scope>): <subject>   (scope 는 선택)
+
+set -e
+
+message_file=$1
+
+# 머지 커밋 메시지는 git 이 만든다. MERGE_HEAD 는 머지 중에만 존재한다.
+[ -e "$(git rev-parse --git-path MERGE_HEAD)" ] && exit 0
+
+# 실제로 저장될 메시지만 남긴다.
+#   - `git commit -v` 가 붙이는 가위선(>8) 아래 diff 전체
+#   - 주석 줄과 CR
+#   - 앞뒤 빈 줄
+cleaned=$(
+    sed -e '/^#[[:space:]]*-\{3,\}[[:space:]]*>8[[:space:]]*-\{3,\}/,$d' "$message_file" |
+        sed -e 's/\r$//' -e '/^[[:space:]]*#/d' |
+        awk '
+            /[^[:space:]]/ {
+                for (i = 0; i < pending; i++) print ""
+                pending = 0
+                print
+                seen = 1
+                next
+            }
+            seen { pending++ }
+        '
+)
+
+# `git commit -m "...\n..."` 의 작은따옴표 안 \n 은 개행으로 해석되지 않는다.
+# 그대로 두면 본문이 한 줄에 뭉치므로 실제 줄바꿈을 쓰게 강제한다.
+if printf '%s\n' "$cleaned" | grep -qF '\n'; then
+    echo '[commit-msg] 문자열 \n 대신 실제 줄바꿈을 사용하세요.'
+    echo '  여러 줄 메시지는 편집기 또는 git commit -F <파일> 로 작성하세요.'
+    exit 1
+fi
+
+subject=$(printf '%s\n' "$cleaned" | sed -n '1p')
+
+# rebase --autosquash 로 합쳐지며 사라질 임시 커밋은 통과시킨다.
+case "$subject" in
+    'fixup! '* | 'squash! '*) exit 0 ;;
+esac
+
+# 형식 검사: type(scope): subject   (scope 선택, 소문자 패키지명 권장)
+#   type 목록(문서 8.2): feat, fix, docs, style, refactor, test, chore, perf, ci
+if ! printf '%s\n' "$subject" | grep -Eq \
+    '^(feat|fix|docs|style|refactor|test|chore|perf|ci)(\([a-z0-9/_-]+\))?: [^[:space:]].*$'; then
+    echo "[commit-msg] 제목 형식이 올바르지 않습니다."
+    echo "  형식: type(scope): subject   (scope 는 선택)"
+    echo "  type: feat, fix, docs, style, refactor, test, chore, perf, ci"
+    echo "  예:   feat(user): 소셜 로그인 API 추가"
+    echo "  규칙: spring-backend-conventions.md 8장"
+    exit 1
+fi
+
+# 제목 끝 마침표 금지 (문서 8.3: "마침표 없이")
+case "$subject" in
+    *.)
+        echo "[commit-msg] 제목 끝에 마침표를 쓰지 마세요."
+        echo "  예: feat(user): 소셜 로그인 API 추가"
+        exit 1
+        ;;
+esac
+
+# 제목에 이모지 금지. UTF-8 앞 바이트 블록으로 통째로 막는다.
+#   \360\237           U+1F300~U+1FAFF  🎉 🚀 🔥
+#   \342\230 ~ \342\236 U+2600~U+27BF    ☀ ⚠ ⚡ ✅ ✨ ✔ ❗ ❤
+#   \342\254, \342\255  U+2B00~U+2B7F    ⬅ ⭐
+#   \357\270\217        U+FE0F           변이 선택자
+if printf '%s\n' "$subject" | grep -Eq ':[a-z_]+:' ||
+    printf '%s\n' "$subject" | LC_ALL=C grep -qF \
+        -e "$(printf '\360\237')" \
+        -e "$(printf '\342\230')" -e "$(printf '\342\231')" -e "$(printf '\342\232')" \
+        -e "$(printf '\342\233')" -e "$(printf '\342\234')" -e "$(printf '\342\235')" \
+        -e "$(printf '\342\236')" -e "$(printf '\342\254')" -e "$(printf '\342\255')" \
+        -e "$(printf '\357\270\217')"; then
+    echo "[commit-msg] 제목에 이모지를 쓸 수 없습니다."
+    echo "  예: feat(user): 소셜 로그인 API 추가"
+    exit 1
+fi
+
+# 제목과 본문 사이에는 빈 줄이 필요하다 (문서 8.1).
+# 둘째 줄이 비어 있지 않으면 git 이 그 줄까지 제목으로 묶어 한 줄 로그가 깨진다.
+if [ "$(printf '%s\n' "$cleaned" | wc -l)" -ge 2 ] &&
+    [ -n "$(printf '%s\n' "$cleaned" | sed -n '2p')" ]; then
+    echo "[commit-msg] 제목과 본문 사이에는 빈 줄이 필요합니다."
+    exit 1
+fi
