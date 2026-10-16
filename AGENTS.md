@@ -42,7 +42,7 @@ git config core.hooksPath .githooks
 - **commit-msg**: 아래 커밋 규칙 검증
 
 ## 커밋 규칙 (Conventional Commits)
-- 형식: `type(scope): subject` (scope는 선택이지만 이 레포는 항상 붙임)
+- 형식: `type(scope): subject` (**scope 필수** — 훅이 강제)
 - type: `feat fix docs style refactor test chore perf ci`
 - subject: 명령형, 마침표 없이, 이모지 없이. 본문 쓰면 제목과 빈 줄로 구분
 - scope: 보통 도메인 패키지명(`user`, `course`, `auth`) / 비도메인은 `init`, `build`, `global` 등

@@ -45,12 +45,12 @@ case "$subject" in
     'fixup! '* | 'squash! '*) exit 0 ;;
 esac
 
-# 형식 검사: type(scope): subject   (scope 선택, 소문자 패키지명 권장)
-#   type 목록(문서 8.2): feat, fix, docs, style, refactor, test, chore, perf, ci
+# 형식 검사: type(scope): subject   (scope 필수, 소문자 패키지명 권장)
+#   type 목록: feat, fix, docs, style, refactor, test, chore, perf, ci
 if ! printf '%s\n' "$subject" | grep -Eq \
-    '^(feat|fix|docs|style|refactor|test|chore|perf|ci)(\([a-z0-9/_-]+\))?: [^[:space:]].*$'; then
+    '^(feat|fix|docs|style|refactor|test|chore|perf|ci)\([a-z0-9/_-]+\): [^[:space:]].*$'; then
     echo "[commit-msg] 제목 형식이 올바르지 않습니다."
-    echo "  형식: type(scope): subject   (scope 는 선택)"
+    echo "  형식: type(scope): subject   (scope 필수)"
     echo "  type: feat, fix, docs, style, refactor, test, chore, perf, ci"
     echo "  예:   feat(user): 소셜 로그인 API 추가"
     echo "  규칙: AGENTS.md 커밋 규칙"
