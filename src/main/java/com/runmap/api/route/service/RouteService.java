@@ -11,6 +11,7 @@ import com.graphhopper.util.shapes.GHPoint;
 import com.runmap.api.global.error.BusinessException;
 import com.runmap.api.global.error.ErrorCode;
 import com.runmap.api.map.domain.MapGraphFactory;
+import com.runmap.api.route.domain.OneWayVias;
 import com.runmap.api.route.dto.RouteRecommendRequest;
 import com.runmap.api.route.dto.RouteRecommendResponse;
 import com.runmap.api.route.dto.RouteRecommendResponse.RouteDto;
@@ -30,6 +31,7 @@ public class RouteService {
   static final int CANDIDATES = 5; // PoC best-of-k
   static final int MAX_ROUTES = 3;
   static final double LOOP_TOLERANCE = 0.15;
+  static final double ONE_WAY_TOLERANCE = 0.10;
   // ponytail: GH round_trip 은 짧게 나온다. fixture 실측 보정값(2·3km 10/10), 서울 그래프로 eval 후 조정
   static final double LOOP_DISTANCE_FACTOR = 1.1;
 
@@ -43,22 +45,60 @@ public class RouteService {
 
   public RouteRecommendResponse recommend(RouteRecommendRequest req) {
     GHPoint start = round4(req.start());
+    return req.end() == null ? loop(req, start) : oneWay(req, start, round4(req.end()));
+  }
+
+  private RouteRecommendResponse loop(RouteRecommendRequest req, GHPoint start) {
     int target = req.distanceM();
     long seed0 = seedOf(req, start);
     List<RouteDto> candidates = new ArrayList<>();
     for (int i = 0; i < CANDIDATES; i++) {
-      GHRequest r =
-          new GHRequest(List.of(start))
-              .setProfile(MapGraphFactory.PROFILE)
-              .setAlgorithm(Parameters.Algorithms.ROUND_TRIP)
-              .setPathDetails(List.of(RouteAssembler.EDGE_ID));
+      GHRequest r = request(List.of(start)).setAlgorithm(Parameters.Algorithms.ROUND_TRIP);
       r.putHint(Parameters.Algorithms.RoundTrip.DISTANCE, target * LOOP_DISTANCE_FACTOR);
       r.putHint(Parameters.Algorithms.RoundTrip.SEED, seed0 + i);
       route(r)
-          .filter(p -> Math.abs(p.getDistance() - target) <= target * LOOP_TOLERANCE)
+          .filter(p -> within(p, target, LOOP_TOLERANCE))
           .ifPresent(p -> candidates.add(assembler.toDto(p, "LOOP", req)));
     }
     return pick(req.mapVersion(), candidates, target);
+  }
+
+  // 최단이 목표보다 길면 B1-1 안내(D8). 아니면 최단 + 타원 경유지 8개 우회 중 ±10% 이내
+  private RouteRecommendResponse oneWay(RouteRecommendRequest req, GHPoint start, GHPoint end) {
+    int target = req.distanceM();
+    ResponsePath shortest =
+        route(request(List.of(start, end)))
+            .orElseThrow(() -> new BusinessException(ErrorCode.OUT_OF_SERVICE_AREA));
+    if (shortest.getDistance() > target) {
+      return new RouteRecommendResponse(
+          req.mapVersion(),
+          List.of(),
+          List.of(RouteRecommendResponse.DESTINATION_FARTHER),
+          (int) Math.round(shortest.getDistance()));
+    }
+    List<ResponsePath> paths = new ArrayList<>();
+    paths.add(shortest);
+    for (GHPoint via : OneWayVias.of(start, end, target)) {
+      GHRequest r = request(List.of(start, via, end));
+      r.putHint(Parameters.Routing.PASS_THROUGH, true);
+      route(r).ifPresent(paths::add);
+    }
+    List<RouteDto> candidates =
+        paths.stream()
+            .filter(p -> within(p, target, ONE_WAY_TOLERANCE))
+            .map(p -> assembler.toDto(p, "ONE_WAY", req))
+            .toList();
+    return pick(req.mapVersion(), candidates, target);
+  }
+
+  private static GHRequest request(List<GHPoint> points) {
+    return new GHRequest(points)
+        .setProfile(MapGraphFactory.PROFILE)
+        .setPathDetails(List.of(RouteAssembler.EDGE_ID));
+  }
+
+  private static boolean within(ResponsePath p, int target, double tolerance) {
+    return Math.abs(p.getDistance() - target) <= target * tolerance;
   }
 
   // 지역 밖이면 422, 그 밖의 엔진 실패(연결 없음 등)는 후보 하나를 버린다
