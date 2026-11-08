@@ -72,6 +72,11 @@ dependencies {
 	testAnnotationProcessor 'org.projectlombok:lombok'
 }
 
+// /api/v1/meta 의 build 값 (BuildProperties)
+springBoot {
+	buildInfo()
+}
+
 tasks.named('test') {
 	useJUnitPlatform()
 }

@@ -36,9 +36,9 @@ import org.springframework.stereotype.Service;
 public class RouteService {
 
   static final int CANDIDATES = 5; // PoC best-of-k
-  static final int MAX_ROUTES = 3;
-  static final double LOOP_TOLERANCE = 0.15;
-  static final double ONE_WAY_TOLERANCE = 0.10;
+  public static final int MAX_ROUTES = 3;
+  public static final double LOOP_TOLERANCE = 0.15;
+  public static final double ONE_WAY_TOLERANCE = 0.10;
   // ponytail: GH round_trip 은 짧게 나온다. fixture 실측 보정값(2·3km 10/10), 서울 그래프로 eval 후 조정
   static final double LOOP_DISTANCE_FACTOR = 1.1;
 
