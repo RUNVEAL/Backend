@@ -4,15 +4,19 @@ import com.graphhopper.GHRequest;
 import com.graphhopper.GHResponse;
 import com.graphhopper.GraphHopper;
 import com.graphhopper.ResponsePath;
+import com.graphhopper.json.Statement;
+import com.graphhopper.util.CustomModel;
 import com.graphhopper.util.Parameters;
 import com.graphhopper.util.exceptions.PointNotFoundException;
 import com.graphhopper.util.exceptions.PointOutOfBoundsException;
 import com.graphhopper.util.shapes.GHPoint;
 import com.runmap.api.global.error.BusinessException;
 import com.runmap.api.global.error.ErrorCode;
+import com.runmap.api.map.domain.AreaEncodedValues;
 import com.runmap.api.map.domain.MapGraphFactory;
 import com.runmap.api.map.domain.SegmentIds;
 import com.runmap.api.route.domain.OneWayVias;
+import com.runmap.api.route.domain.RouteFilter;
 import com.runmap.api.route.dto.RouteRecommendRequest;
 import com.runmap.api.route.dto.RouteRecommendResponse;
 import com.runmap.api.route.dto.RouteRecommendResponse.RouteDto;
@@ -24,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import org.springframework.stereotype.Service;
 
 /** 코스 후보를 여러 개 만들어 목표 거리 허용 범위 안의 것을 최대 3개 고른다 (API 명세 §3.2). 상태 없음. */
@@ -53,19 +58,41 @@ public class RouteService {
         req.preferUnexplored() && req.exploredSegmentIds() != null
             ? segmentIds.edgesOf(req.exploredSegmentIds())
             : Set.of();
+    CustomModel model = filterModel(req.filters());
+    Function<List<GHPoint>, GHRequest> newRequest = points -> request(points, penalized, model);
     return req.end() == null
-        ? loop(req, start, penalized)
-        : oneWay(req, start, round4(req.end()), penalized);
+        ? loop(req, start, newRequest)
+        : oneWay(req, start, round4(req.end()), newRequest);
+  }
+
+  // 필터 = 선호 가중치. LM 제약으로 곱은 1 이하만 → "공원 선호" = "공원 아닌 길 ×0.5"
+  static CustomModel filterModel(List<RouteFilter> filters) {
+    if (filters.isEmpty()) {
+      return null;
+    }
+    CustomModel m = new CustomModel();
+    if (filters.contains(RouteFilter.PARK)) {
+      m.addToPriority(
+          Statement.If("!" + AreaEncodedValues.NEAR_PARK, Statement.Op.MULTIPLY, "0.5"));
+    }
+    if (filters.contains(RouteFilter.RIVERSIDE)) {
+      m.addToPriority(
+          Statement.If("!" + AreaEncodedValues.NEAR_RIVER, Statement.Op.MULTIPLY, "0.5"));
+    }
+    if (filters.contains(RouteFilter.GENTLE_SLOPE)) {
+      m.addToPriority(
+          Statement.If("average_slope > 6 || average_slope < -6", Statement.Op.MULTIPLY, "0.3"));
+    }
+    return m;
   }
 
   private RouteRecommendResponse loop(
-      RouteRecommendRequest req, GHPoint start, Set<Integer> penalized) {
+      RouteRecommendRequest req, GHPoint start, Function<List<GHPoint>, GHRequest> newRequest) {
     int target = req.distanceM();
     long seed0 = seedOf(req, start);
     List<RouteDto> candidates = new ArrayList<>();
     for (int i = 0; i < CANDIDATES; i++) {
-      GHRequest r =
-          request(List.of(start), penalized).setAlgorithm(Parameters.Algorithms.ROUND_TRIP);
+      GHRequest r = newRequest.apply(List.of(start)).setAlgorithm(Parameters.Algorithms.ROUND_TRIP);
       r.putHint(Parameters.Algorithms.RoundTrip.DISTANCE, target * LOOP_DISTANCE_FACTOR);
       r.putHint(Parameters.Algorithms.RoundTrip.SEED, seed0 + i);
       route(r)
@@ -77,10 +104,13 @@ public class RouteService {
 
   // 최단이 목표보다 길면 B1-1 안내(D8). 아니면 최단 + 타원 경유지 8개 우회 중 ±10% 이내
   private RouteRecommendResponse oneWay(
-      RouteRecommendRequest req, GHPoint start, GHPoint end, Set<Integer> penalized) {
+      RouteRecommendRequest req,
+      GHPoint start,
+      GHPoint end,
+      Function<List<GHPoint>, GHRequest> newRequest) {
     int target = req.distanceM();
     ResponsePath shortest =
-        route(request(List.of(start, end), penalized))
+        route(newRequest.apply(List.of(start, end)))
             .orElseThrow(() -> new BusinessException(ErrorCode.OUT_OF_SERVICE_AREA));
     if (shortest.getDistance() > target) {
       return new RouteRecommendResponse(
@@ -92,7 +122,7 @@ public class RouteService {
     List<ResponsePath> paths = new ArrayList<>();
     paths.add(shortest);
     for (GHPoint via : OneWayVias.of(start, end, target)) {
-      GHRequest r = request(List.of(start, via, end), penalized);
+      GHRequest r = newRequest.apply(List.of(start, via, end));
       r.putHint(Parameters.Routing.PASS_THROUGH, true);
       route(r).ifPresent(paths::add);
     }
@@ -104,13 +134,17 @@ public class RouteService {
     return pick(req.mapVersion(), candidates, target);
   }
 
-  private static GHRequest request(List<GHPoint> points, Set<Integer> penalized) {
+  private static GHRequest request(
+      List<GHPoint> points, Set<Integer> penalized, CustomModel model) {
     GHRequest r =
         new GHRequest(points)
             .setProfile(MapGraphFactory.PROFILE)
-            .setPathDetails(List.of(RouteAssembler.EDGE_ID));
+            .setPathDetails(RouteAssembler.PATH_DETAILS);
     if (!penalized.isEmpty()) {
       r.getHints().putObject(MapGraphFactory.EXPLORED_EDGES_HINT, penalized);
+    }
+    if (model != null) {
+      r.setCustomModel(model);
     }
     return r;
   }
