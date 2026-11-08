@@ -11,6 +11,7 @@ import com.graphhopper.util.shapes.GHPoint;
 import com.runmap.api.global.error.BusinessException;
 import com.runmap.api.global.error.ErrorCode;
 import com.runmap.api.map.domain.MapGraphFactory;
+import com.runmap.api.map.domain.SegmentIds;
 import com.runmap.api.route.domain.OneWayVias;
 import com.runmap.api.route.dto.RouteRecommendRequest;
 import com.runmap.api.route.dto.RouteRecommendResponse;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 /** 코스 후보를 여러 개 만들어 목표 거리 허용 범위 안의 것을 최대 3개 고른다 (API 명세 §3.2). 상태 없음. */
@@ -37,23 +39,33 @@ public class RouteService {
 
   private final GraphHopper gh;
   private final RouteAssembler assembler;
+  private final SegmentIds segmentIds;
 
-  public RouteService(GraphHopper gh, RouteAssembler assembler) {
+  public RouteService(GraphHopper gh, RouteAssembler assembler, SegmentIds segmentIds) {
     this.gh = gh;
     this.assembler = assembler;
+    this.segmentIds = segmentIds;
   }
 
   public RouteRecommendResponse recommend(RouteRecommendRequest req) {
     GHPoint start = round4(req.start());
-    return req.end() == null ? loop(req, start) : oneWay(req, start, round4(req.end()));
+    Set<Integer> penalized =
+        req.preferUnexplored() && req.exploredSegmentIds() != null
+            ? segmentIds.edgesOf(req.exploredSegmentIds())
+            : Set.of();
+    return req.end() == null
+        ? loop(req, start, penalized)
+        : oneWay(req, start, round4(req.end()), penalized);
   }
 
-  private RouteRecommendResponse loop(RouteRecommendRequest req, GHPoint start) {
+  private RouteRecommendResponse loop(
+      RouteRecommendRequest req, GHPoint start, Set<Integer> penalized) {
     int target = req.distanceM();
     long seed0 = seedOf(req, start);
     List<RouteDto> candidates = new ArrayList<>();
     for (int i = 0; i < CANDIDATES; i++) {
-      GHRequest r = request(List.of(start)).setAlgorithm(Parameters.Algorithms.ROUND_TRIP);
+      GHRequest r =
+          request(List.of(start), penalized).setAlgorithm(Parameters.Algorithms.ROUND_TRIP);
       r.putHint(Parameters.Algorithms.RoundTrip.DISTANCE, target * LOOP_DISTANCE_FACTOR);
       r.putHint(Parameters.Algorithms.RoundTrip.SEED, seed0 + i);
       route(r)
@@ -64,10 +76,11 @@ public class RouteService {
   }
 
   // 최단이 목표보다 길면 B1-1 안내(D8). 아니면 최단 + 타원 경유지 8개 우회 중 ±10% 이내
-  private RouteRecommendResponse oneWay(RouteRecommendRequest req, GHPoint start, GHPoint end) {
+  private RouteRecommendResponse oneWay(
+      RouteRecommendRequest req, GHPoint start, GHPoint end, Set<Integer> penalized) {
     int target = req.distanceM();
     ResponsePath shortest =
-        route(request(List.of(start, end)))
+        route(request(List.of(start, end), penalized))
             .orElseThrow(() -> new BusinessException(ErrorCode.OUT_OF_SERVICE_AREA));
     if (shortest.getDistance() > target) {
       return new RouteRecommendResponse(
@@ -79,7 +92,7 @@ public class RouteService {
     List<ResponsePath> paths = new ArrayList<>();
     paths.add(shortest);
     for (GHPoint via : OneWayVias.of(start, end, target)) {
-      GHRequest r = request(List.of(start, via, end));
+      GHRequest r = request(List.of(start, via, end), penalized);
       r.putHint(Parameters.Routing.PASS_THROUGH, true);
       route(r).ifPresent(paths::add);
     }
@@ -91,10 +104,15 @@ public class RouteService {
     return pick(req.mapVersion(), candidates, target);
   }
 
-  private static GHRequest request(List<GHPoint> points) {
-    return new GHRequest(points)
-        .setProfile(MapGraphFactory.PROFILE)
-        .setPathDetails(List.of(RouteAssembler.EDGE_ID));
+  private static GHRequest request(List<GHPoint> points, Set<Integer> penalized) {
+    GHRequest r =
+        new GHRequest(points)
+            .setProfile(MapGraphFactory.PROFILE)
+            .setPathDetails(List.of(RouteAssembler.EDGE_ID));
+    if (!penalized.isEmpty()) {
+      r.getHints().putObject(MapGraphFactory.EXPLORED_EDGES_HINT, penalized);
+    }
+    return r;
   }
 
   private static boolean within(ResponsePath p, int target, double tolerance) {
