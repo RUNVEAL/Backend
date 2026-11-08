@@ -1,5 +1,8 @@
 package com.runmap.api;
 
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 /** 여러 패키지 테스트가 같이 쓰는 요청 본문. */
 public final class TestBodies {
 
@@ -7,6 +10,15 @@ public final class TestBodies {
   public static final String LOOP_3K =
       """
       {"mapVersion":"2026-10-27","start":{"lat":37.5552,"lng":126.9236},"distanceM":3000}""";
+
+  /** 맵매칭 요청. 점 n개 ([lng, lat], 서교동 근처). */
+  public static String matchBody(int n) {
+    String pts =
+        IntStream.range(0, n)
+            .mapToObj(i -> "[126.92" + i % 10 + ",37.555]")
+            .collect(Collectors.joining(","));
+    return "{\"mapVersion\":\"2026-10-27\",\"purpose\":\"LIVE\",\"points\":[" + pts + "]}";
+  }
 
   /** JSON 객체 본문 끝에 필드를 더한다. 예: with(LOOP_3K, "\"filters\":[\"PARK\"]") */
   public static String with(String body, String fields) {
