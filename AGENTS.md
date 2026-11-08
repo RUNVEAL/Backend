@@ -81,7 +81,10 @@ com.runmap.api
 ## 에러 코드
 - `global/error/ErrorCode` enum 한 곳에서 `{HttpStatus, code, message}` 관리
 - code = 도메인 접두어(영문 1~2자) + 3자리 (`C` 공통, `A` 인증, `U` 사용자, `CO` 코스 …)
+- 예외: 지도 API(`/routes` · `/matches` · `/meta`)는 API 명세 §2.8의 문자열 코드(`INVALID_REQUEST`, `SERVER_BUSY` …)를 쓴다. 앱의 화면 분기 표가 이 값 기준이다
+- 400은 `BusinessException.invalid(field, reason)` — 첫 위반 1건만, `reason`은 명세 §2.8 목록
 - 배포된 code 값의 의미는 바꾸지 않음 (앱이 분기에 씀 = API 계약)
+- 에러 `message`·로그에 입력값(좌표 등)을 넣지 않는다. 예외는 클래스 이름만 로그에 남긴다
 
 ## 브랜치 전략
 - `main`: 운영 배포 기준 / `develop`: 기본·통합 브랜치
