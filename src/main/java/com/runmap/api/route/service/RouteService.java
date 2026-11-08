@@ -8,7 +8,6 @@ import com.graphhopper.json.Statement;
 import com.graphhopper.util.CustomModel;
 import com.graphhopper.util.Parameters;
 import com.graphhopper.util.exceptions.PointNotFoundException;
-import com.graphhopper.util.exceptions.PointOutOfBoundsException;
 import com.graphhopper.util.shapes.GHPoint;
 import com.runmap.api.global.error.BusinessException;
 import com.runmap.api.global.error.ErrorCode;
@@ -109,9 +108,12 @@ public class RouteService {
       GHPoint end,
       Function<List<GHPoint>, GHRequest> newRequest) {
     int target = req.distanceM();
-    ResponsePath shortest =
-        route(newRequest.apply(List.of(start, end)))
-            .orElseThrow(() -> new BusinessException(ErrorCode.OUT_OF_SERVICE_AREA));
+    // 최단 = 선호 가중치(탐험 벌점·필터) 없는 진짜 최단 (명세 §3.2 규칙 3)
+    Optional<ResponsePath> plain = route(request(List.of(start, end), Set.of(), null));
+    if (plain.isEmpty()) {
+      return pick(req.mapVersion(), List.of(), target);
+    }
+    ResponsePath shortest = plain.get();
     if (shortest.getDistance() > target) {
       return new RouteRecommendResponse(
           req.mapVersion(),
@@ -153,11 +155,13 @@ public class RouteService {
     return Math.abs(p.getDistance() - target) <= target * tolerance;
   }
 
-  // 지역 밖이면 422, 그 밖의 엔진 실패(연결 없음 등)는 후보 하나를 버린다
+  // 출발·도착이 지역 밖이면 422. 생성한 경유지가 밖이거나 엔진이 실패하면 후보 하나만 버린다
   private Optional<ResponsePath> route(GHRequest r) {
     GHResponse res = gh.route(r);
+    int last = r.getPoints().size() - 1;
     for (Throwable t : res.getErrors()) {
-      if (t instanceof PointOutOfBoundsException || t instanceof PointNotFoundException) {
+      if (t instanceof PointNotFoundException e
+          && (e.getPointIndex() == 0 || e.getPointIndex() == last)) {
         throw new BusinessException(ErrorCode.OUT_OF_SERVICE_AREA);
       }
     }

@@ -49,6 +49,14 @@ class ExecutionSlotsTest {
   }
 
   @Test
+  void defaultPermitsLeaveOneCarrierFree() {
+    // 계산은 CPU만 쓴다 → 가상 스레드 캐리어를 다 잡으면 /meta·/readyz·대기 타이머가 멈춘다
+    assertThat(ExecutionSlots.defaultPermits(1)).isEqualTo(1);
+    assertThat(ExecutionSlots.defaultPermits(2)).isEqualTo(1);
+    assertThat(ExecutionSlots.defaultPermits(8)).isEqualTo(7);
+  }
+
+  @Test
   void busyCarriesRetryAfterBetween2And5() {
     ExecutionSlots slots = new ExecutionSlots(0, Duration.ofMillis(10));
     assertThatThrownBy(() -> slots.run(false, () -> "x"))

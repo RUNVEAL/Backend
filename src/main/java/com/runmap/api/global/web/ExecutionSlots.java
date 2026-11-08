@@ -24,7 +24,12 @@ public class ExecutionSlots {
 
   @Autowired
   public ExecutionSlots() {
-    this(Runtime.getRuntime().availableProcessors(), Duration.ofSeconds(2));
+    this(defaultPermits(Runtime.getRuntime().availableProcessors()), Duration.ofSeconds(2));
+  }
+
+  // 계산은 CPU만 쓴다. 가상 스레드 캐리어(= 코어 수)를 하나 남겨야 /meta·/readyz·대기 타이머가 돈다
+  static int defaultPermits(int cores) {
+    return Math.max(1, cores - 1);
   }
 
   public ExecutionSlots(int permits, Duration wait) {

@@ -7,6 +7,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -17,6 +19,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.util.UrlPathHelper;
 
 /**
  * IP당 분당 한도 (API 명세 §2.9). IP는 메모리 카운터에만 있고 로그에 남기지 않는다.
@@ -24,7 +27,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  * <p>ponytail: 1분 고정 창 + 메모리. 서버를 2대 이상으로 늘리면 공유 저장소로 옮긴다.
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 20) // ForwardedHeaderFilter(실제 IP) 다음
+@Order(Ordered.HIGHEST_PRECEDENCE + 20)
 @ConditionalOnProperty(name = "runveal.rate-limit.enabled", matchIfMissing = true)
 public class RateLimitFilter extends OncePerRequestFilter {
 
@@ -41,7 +44,35 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
   @Override
   protected boolean shouldNotFilter(HttpServletRequest request) {
-    return !LIMITS.containsKey(request.getRequestURI());
+    return !LIMITS.containsKey(pathOf(request));
+  }
+
+  // 디코딩된 경로 (/api/v1/%72outes 도 /api/v1/routes 로 센다)
+  private static String pathOf(HttpServletRequest request) {
+    return UrlPathHelper.defaultInstance.getLookupPathForRequest(request);
+  }
+
+  /**
+   * 내부 프록시(Caddy, 같은 Docker 네트워크)에서 온 요청만 X-Forwarded-For 의 마지막 값(프록시가 붙인 실제 IP)을 믿는다. Forwarded ·
+   * X-Forwarded-Prefix 는 보지 않는다.
+   */
+  static String clientIp(HttpServletRequest request) {
+    String remote = request.getRemoteAddr();
+    String xff = request.getHeader("X-Forwarded-For");
+    if (xff == null || !isInternal(remote)) {
+      return remote;
+    }
+    String[] hops = xff.split(",");
+    return hops[hops.length - 1].trim();
+  }
+
+  private static boolean isInternal(String ip) {
+    try {
+      InetAddress a = InetAddress.getByName(ip); // remoteAddr 는 IP 리터럴이라 DNS 조회 없음
+      return a.isLoopbackAddress() || a.isSiteLocalAddress();
+    } catch (UnknownHostException e) {
+      return false;
+    }
   }
 
   @Override
@@ -49,10 +80,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
     long now = System.currentTimeMillis();
-    String path = request.getRequestURI();
+    String path = pathOf(request);
     int count =
         window(now / 60_000)
-            .computeIfAbsent(request.getRemoteAddr() + " " + path, k -> new AtomicInteger())
+            .computeIfAbsent(clientIp(request) + " " + path, k -> new AtomicInteger())
             .incrementAndGet();
     if (count > LIMITS.get(path)) {
       int retryAfter = (int) (60 - (now / 1000) % 60);

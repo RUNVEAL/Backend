@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,6 +15,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @SpringBootTest(properties = "runveal.rate-limit.enabled=true")
 @AutoConfigureMockMvc
@@ -26,6 +28,52 @@ class RateLimitTest {
     return mvc.perform(
         post("/api/v1/routes")
             .header("X-Forwarded-For", ip)
+            .contentType(APPLICATION_JSON)
+            .content(LOOP_3K));
+  }
+
+  private ResultActions tenThenExpect429(MockHttpServletRequestBuilder req) throws Exception {
+    for (int i = 0; i < 10; i++) {
+      mvc.perform(req).andExpect(status().isOk());
+    }
+    return mvc.perform(req).andExpect(status().isTooManyRequests());
+  }
+
+  @Test
+  void encodedPathIsStillLimited() throws Exception {
+    tenThenExpect429(
+        post(URI.create("/api/v1/%72outes"))
+            .header("X-Forwarded-For", "203.0.113.21")
+            .contentType(APPLICATION_JSON)
+            .content(LOOP_3K));
+  }
+
+  @Test
+  void forwardedHeaderCannotSpoofIdentity() throws Exception {
+    for (int i = 0; i < 10; i++) {
+      mvc.perform(
+              post("/api/v1/routes")
+                  .header("X-Forwarded-For", "203.0.113.22")
+                  .header("Forwarded", "for=10.9.9." + i)
+                  .contentType(APPLICATION_JSON)
+                  .content(LOOP_3K))
+          .andExpect(status().isOk());
+    }
+    mvc.perform(
+            post("/api/v1/routes")
+                .header("X-Forwarded-For", "203.0.113.22")
+                .header("Forwarded", "for=10.9.9.99")
+                .contentType(APPLICATION_JSON)
+                .content(LOOP_3K))
+        .andExpect(status().isTooManyRequests());
+  }
+
+  @Test
+  void forwardedPrefixCannotSkipLimit() throws Exception {
+    tenThenExpect429(
+        post("/api/v1/routes")
+            .header("X-Forwarded-For", "203.0.113.23")
+            .header("X-Forwarded-Prefix", "/p")
             .contentType(APPLICATION_JSON)
             .content(LOOP_3K));
   }

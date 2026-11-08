@@ -30,9 +30,8 @@ spring:
       hibernate:
         format_sql: true
 
-# X-Forwarded-For → remoteAddr. 앞단 Caddy가 클라이언트 값을 덮어쓰므로 위조 불가 (IP rate limit용)
+# 실제 클라이언트 IP는 RateLimitFilter가 직접 읽는다 (Forwarded · X-Forwarded-Prefix 위조 방지로 forward-headers-strategy 미사용)
 server:
-  forward-headers-strategy: framework
   compression:
     enabled: true
     mime-types: application/json
