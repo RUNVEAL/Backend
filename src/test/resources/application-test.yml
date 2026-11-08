@@ -9,3 +9,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+
+runveal:
+  map:
+    version: "2026-10-27"
+    osm-file: src/test/resources/fixtures/seogyo.osm.pbf
+    graph-location: ${java.io.tmpdir}/runveal-gh-${random.uuid} # 실행마다 새로 import (EV 바뀌어도 안전)
+    srtm-dir: src/test/resources/fixtures/srtm
+    areas-dir: src/test/resources/fixtures/areas
