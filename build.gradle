@@ -50,6 +50,9 @@ dependencies {
 	// 운영 (모니터링)
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+	// 지도 · 경로 엔진 (라이브러리로 내장)
+	implementation 'com.graphhopper:graphhopper-core:11.1'
+
 	// Lombok
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'

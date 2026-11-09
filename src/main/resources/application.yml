@@ -36,3 +36,14 @@ management:
     web:
       exposure:
         include: health,info
+
+# 지도 데이터 경로는 운영에서 환경변수(RUNVEAL_MAP_*)로 주입
+---
+spring.config.activate.on-profile: local
+runveal:
+  map:
+    version: "2026-10-27"
+    osm-file: src/test/resources/fixtures/seogyo.osm.pbf
+    graph-location: build/local-graph
+    srtm-dir: src/test/resources/fixtures/srtm
+    areas-dir: src/test/resources/fixtures/areas
