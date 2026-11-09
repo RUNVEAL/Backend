@@ -30,8 +30,19 @@ spring:
       hibernate:
         format_sql: true
 
-# 운영/장애 알림에 꼭 필요한 엔드포인트만 노출
+# 실제 클라이언트 IP는 RateLimitFilter가 직접 읽는다 (Forwarded · X-Forwarded-Prefix 위조 방지로 forward-headers-strategy 미사용)
+server:
+  compression:
+    enabled: true
+    mime-types: application/json
+
+# 운영/장애 알림에 꼭 필요한 엔드포인트만 노출. /livez · /readyz 는 리버스 프록시에서 외부 차단
 management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+        add-additional-paths: true
   endpoints:
     web:
       exposure:
