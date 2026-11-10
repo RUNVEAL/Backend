@@ -15,7 +15,7 @@ jar 와 지도는 이미지에 굽지 않는다. VM `/srv/runveal` 에서 링크
 
 ## 프라이버시 (바꾸면 안 되는 것)
 
-- Caddy 에 `log` 지시어를 넣지 않는다 → 접속 로그(IP·시각) 없음
+- Caddy 에 `log` 지시어를 넣지 않는다 → 접속 로그(IP·시각) 없음. Caddy 가 직접 만든 5xx 에러 로그(`http.log.error`, IP 포함)도 전역 설정으로 끈다
 - `api` 는 `-XX:-HeapDumpOnOutOfMemoryError` (힙 덤프 금지). 에러 추적 도구를 붙이면 본문 수집을 끈다
 - `/livez` · `/readyz` · `/actuator/**` 는 외부에서 404 (Compose healthcheck 만 내부에서 쓴다)
 - 확인: `python3 deploy/smoke.py https://<host> --spoof-check` + 로그 grep (아래)
@@ -27,10 +27,35 @@ az login                          # Azure for Students 구독
 bash deploy/azure-setup.sh        # RG · VM · 방화벽(80/443 전체, 22 내 IP만) · docker · .env
 ```
 
-## 코드 배포 / 롤백
+## 자동 배포 (CI/CD)
+
+`main` 에 머지되면 `.github/workflows/deploy.yml` 이 돈다: 테스트 → jar → (VM 이 꺼져 있으면 켜고) → 이 러너 IP 에만 SSH 를 잠깐 열고 → `release.sh --jar` → smoke → SSH 닫기.
+배포가 실패하면(healthy·smoke) `release.sh` 가 **직전 jar 로 자동 롤백**하고 job 은 빨간불로 끝난다.
+
+- Azure 로그인은 OIDC (Managed Identity `runveal-gha`, 권한은 VM·NSG 두 개뿐). 장기 비밀은 배포 전용 SSH 키(`VM_SSH_KEY`) 하나
+- 호스트 키는 `VM_KNOWN_HOSTS` 에 고정 (처음 보는 키는 거부)
+- 다시 배포: `gh workflow run deploy.yml -R RUNVEAL/Backend --ref main`
+- 설정을 다시 만들 때: `GH_TOKEN=$(gh auth token --user inoaole) bash deploy/cicd-setup.sh`
+- 흐름: `feature/*` → PR → `develop` (CI) → PR → `main` (배포)
+
+## VM 켜기·끄기 (어디서든)
 
 ```bash
-bash deploy/release.sh                    # HEAD 빌드(테스트 포함) → 업로드 → 재기동 → smoke
+gh workflow run vm-power.yml -R RUNVEAL/Backend -f action=start   # 켜고 API 응답까지 확인
+gh workflow run vm-power.yml -R RUNVEAL/Backend -f action=stop    # deallocate (요금 멈춤)
+gh workflow run vm-power.yml -R RUNVEAL/Backend -f action=status
+gh run watch -R RUNVEAL/Backend $(gh run list -R RUNVEAL/Backend -w vm-power.yml -L 1 --json databaseId -q '.[0].databaseId')
+```
+
+- 자동: 매일 **02:00 KST 끄기 · 09:00 KST 켜기** (`vm-power.yml` 의 `schedule`, 바꾸려면 cron 수정)
+- 휴대폰: GitHub 앱 → RUNVEAL/Backend → Actions → **VM power** → Run workflow
+- 클라우드 Claude(claude.ai/code): 환경 변수에 `GH_TOKEN` 이 있어야 한다. RUNVEAL/Backend 에 **Actions: Read and write** 만 준 fine-grained PAT 를 만들어 넣는다 (Azure 키는 필요 없다)
+- 배포와 같은 `concurrency` 그룹이라 배포 도중에 꺼지지 않는다
+
+## 코드 배포 / 롤백 (수동)
+
+```bash
+bash deploy/release.sh                    # HEAD 빌드(테스트 포함) → 업로드 → 재기동 → smoke (실패 시 자동 롤백)
 bash deploy/release.sh --rollback <sha>   # 이미 올린 jar 로 (releases/ 에 남아 있음)
 ```
 
@@ -60,13 +85,12 @@ source deploy/target.env; S="ssh -i $SSH_KEY $SSH_USER@$HOST"
 $S 'cd /srv/runveal && sudo docker compose ps'
 $S 'cd /srv/runveal && sudo docker compose logs api --tail 100'
 # 로그에 좌표·IP 가 없는지 (0 이어야 함)
-$S 'cd /srv/runveal && sudo docker compose logs --no-color | grep -cE "37\.5552|126\.9236"'
+$S 'cd /srv/runveal && sudo docker compose logs --no-color | grep -cE "37\.5552|126\.9236|remote_ip|client_ip"'
 ```
 
 | 상황 | 명령 |
 | --- | --- |
-| 안 쓸 때 크레딧 아끼기 | `az vm deallocate -g runveal-rg -n runveal-api` (디스크·IP 요금만) |
-| 다시 켜기 | `az vm start -g runveal-rg -n runveal-api` → `bash deploy/wait-healthy.sh` |
+| 안 쓸 때 크레딧 아끼기 | `vm-power` 워크플로 (위) 또는 `az vm deallocate -g runveal-rg -n runveal-api` |
 | 내 IP 가 바뀌어 SSH 안 됨 | `az network nsg rule update -g runveal-rg --nsg-name runveal-apiNSG -n allow-ssh-me --source-address-prefixes $(curl -s https://api.ipify.org)/32` |
 | 사양 올리기 | `az vm deallocate …` → `az vm resize -g runveal-rg -n runveal-api --size Standard_B4s_v2` → `az vm start …` |
 | 도메인 바꾸기 | DNS A 레코드 → VM IP, `.env` 의 `SITE_ADDRESS` 수정 → `sudo docker compose up -d caddy` |
@@ -78,10 +102,10 @@ $S 'cd /srv/runveal && sudo docker compose logs --no-color | grep -cE "37\.5552|
 | `Standard_B2s_v2` 서울, 24시간 | 약 $76 |
 | 디스크 30GB StandardSSD + 고정 IP | 약 $6 |
 
-24시간 켜두면 약 5~6주. 안 쓰는 날은 `deallocate`. B 시리즈는 버스트형이라 CPU 크레딧을 다 쓰면 느려진다 (부하 테스트를 길게 돌릴 때 주의).
+24시간 켜두면 약 5~6주. 자동 스케줄(하루 17시간)이면 약 7~8주. 안 쓰는 날은 `stop`. B 시리즈는 버스트형이라 CPU 크레딧을 다 쓰면 느려진다 (부하 테스트를 길게 돌릴 때 주의).
 
 ## 아직 없는 것
 
 - 지도 버전 2개 동시 지원, 기동 시 해시 검증·워밍업 (업로드 때 `SHA256SUMS` 검증으로 대신)
 - 회원 DB 백업 (회원 데이터가 생기면 `pg_dump` cron 또는 디스크 스냅샷)
-- CI/CD 자동 배포 (지금은 `release.sh` 수동)
+- 무중단 배포 (서버 1대라 배포 중 약 30초 끊김. 앱은 503·연결 실패를 대기열로 재시도)
