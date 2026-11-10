@@ -98,4 +98,5 @@ tasks.register('generateSegments', JavaExec) {
 	systemProperty 'runveal.map.graph-location', findProperty('graphLocation') ?: 'build/segments-graph'
 	systemProperty 'runveal.map.srtm-dir', findProperty('srtmDir') ?: 'src/test/resources/fixtures/srtm'
 	systemProperty 'runveal.map.areas-dir', findProperty('areasDir') ?: 'src/test/resources/fixtures/areas'
+	systemProperty 'runveal.map.admin-dir', findProperty('adminDir') ?: 'src/test/resources/fixtures/admin'
 }

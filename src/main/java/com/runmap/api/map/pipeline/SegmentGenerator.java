@@ -2,38 +2,51 @@ package com.runmap.api.map.pipeline;
 
 import com.graphhopper.GraphHopper;
 import com.runmap.api.map.config.MapProperties;
+import com.runmap.api.map.domain.AdminAreas;
 import com.runmap.api.map.domain.MapGraphFactory;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
 
 /**
- * 오프라인 파이프라인 도구: OSM 그래프를 빌드해 {@code segments.bin}(그래프 디렉터리)을 생성한다. gradle task {@code
- * generateSegments}로 실행한다.
+ * 오프라인 파이프라인 도구: OSM 그래프를 빌드해 지도 산출물을 생성한다 — {@code segments.bin}(edge↔segment), {@code
+ * index.json}(동/구별 총 길이), {@code index.geojson}(동 경계+총 길이), {@code segments.geojson}(길 조각 선).
+ * gradle task {@code generateSegments}로 실행한다.
  *
- * <p>설정은 시스템 프로퍼티 {@code runveal.map.*}로 받는다 (gradle task가 주입). Spring·DB 없이 그래프만 쓴다.
+ * <p>설정은 시스템 프로퍼티 {@code runveal.map.*}로 받는다. Spring·DB 없이 그래프만 쓴다.
  */
 public final class SegmentGenerator {
 
   private SegmentGenerator() {}
 
   public static void main(String[] args) throws IOException {
+    String version = System.getProperty("runveal.map.version", "dev");
+    String graphLocation = require("runveal.map.graph-location");
+    String adminDir = require("runveal.map.admin-dir");
     MapProperties props =
         new MapProperties(
-            System.getProperty("runveal.map.version", "dev"),
+            version,
             require("runveal.map.osm-file"),
-            require("runveal.map.graph-location"),
+            graphLocation,
             require("runveal.map.srtm-dir"),
             require("runveal.map.areas-dir"));
 
     GraphHopper gh = MapGraphFactory.create(props).importOrLoad();
     try {
       long[] segmentIdByEdge = SegmentBuilder.build(gh);
-      Path out = Path.of(props.graphLocation(), "segments.bin");
-      SegmentsFile.write(out, segmentIdByEdge);
-      long segments = Arrays.stream(segmentIdByEdge).distinct().count();
+      AdminAreas areas = new AdminAreas(adminDir);
+      MapIndex index = MapIndex.from(version, RegionTotals.compute(gh, areas));
+
+      Path dir = Path.of(graphLocation);
+      SegmentsFile.write(dir.resolve("segments.bin"), segmentIdByEdge);
+      MapIndexFile.write(dir.resolve("index.json"), index);
+      IndexGeoJson.write(dir.resolve("index.geojson"), Path.of(adminDir, "dong.geojson"), index);
+      SegmentLinesGeoJson.write(dir.resolve("segments.geojson"), gh, segmentIdByEdge);
+
+      long segments = Arrays.stream(segmentIdByEdge).filter(s -> s >= 0).distinct().count();
       System.out.printf(
-          "segments.bin 생성: edge %d개 -> segment %d개 (%s)%n", segmentIdByEdge.length, segments, out);
+          "파이프라인 완료: edge %d → segment %d, 동 %d개 → %s%n",
+          segmentIdByEdge.length, segments, index.dongLengthM().size(), dir);
     } finally {
       gh.close();
     }
