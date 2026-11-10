@@ -7,6 +7,7 @@ import com.runmap.api.map.domain.MapGraphFactory;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * 오프라인 파이프라인 도구: OSM 그래프를 빌드해 지도 산출물을 생성한다 — {@code segments.bin}(edge↔segment), {@code
@@ -42,6 +43,10 @@ public final class SegmentGenerator {
       MapIndexFile.write(dir.resolve("index.json"), index);
       IndexGeoJson.write(dir.resolve("index.geojson"), Path.of(adminDir, "dong.geojson"), index);
       SegmentLinesGeoJson.write(dir.resolve("segments.geojson"), gh, segmentIdByEdge);
+      ManifestFile.write(
+          dir.resolve("manifest.json"),
+          Manifest.of(
+              version, List.of("segments.bin", "index.json", "index.geojson", "segments.geojson")));
 
       long segments = Arrays.stream(segmentIdByEdge).filter(s -> s >= 0).distinct().count();
       System.out.printf(
