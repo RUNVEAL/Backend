@@ -92,6 +92,9 @@ com.runmap.api
 - `hotfix/*`는 `main`에서 분기 → `main`·`develop` 양쪽 반영
 - `main`·`develop` 직접 push 금지 (PR + 리뷰)
 
+## 배포
+- 운영 서버(Azure 서울 VM + Docker Compose)·지도 교체·롤백은 **[deploy/README.md](deploy/README.md)**. 위치 API 프라이버시 규칙(접속 로그 없음·힙 덤프 금지)도 거기 있다
+
 ## 비밀값
 - OAuth 키·JWT 시크릿·DB 비밀번호 등은 **커밋 금지.** `application-local.yml` 또는 환경변수로 주입
 - `.gitignore`가 `.env`·`application-local.yml`·`*.p8`/`*.key`/`*.pem` 등을 이미 제외함
