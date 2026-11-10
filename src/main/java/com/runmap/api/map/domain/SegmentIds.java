@@ -1,35 +1,46 @@
 package com.runmap.api.map.domain;
 
 import com.graphhopper.GraphHopper;
+import com.runmap.api.map.config.MapProperties;
+import com.runmap.api.map.pipeline.SegmentsFile;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 
 /**
  * GraphHopper edgeId ↔ 구간(segment) ID.
  *
- * <p>주인: 우선님. 파이프라인의 segments.bin 이 나오면 내부만 교체한다. 시그니처는 계약. 지금은 identity (segmentId = edgeId).
+ * <p>주인: 우선님. 파이프라인 {@code segments.bin}(그래프 디렉터리)이 있으면 그 매핑을, 없으면 identity(segmentId = edgeId)를
+ * 쓴다. 시그니처는 계약.
  */
 @Component
 public class SegmentIds {
 
-  private final int edgeCount;
+  private final SegmentMap map;
 
-  public SegmentIds(GraphHopper gh) {
-    this.edgeCount = gh.getBaseGraph().getEdges();
+  public SegmentIds(GraphHopper gh, MapProperties props) {
+    Path file = Path.of(props.graphLocation(), "segments.bin");
+    if (Files.exists(file)) {
+      try {
+        this.map = SegmentMap.of(SegmentsFile.read(file));
+      } catch (IOException e) {
+        throw new IllegalStateException("failed to load " + file, e);
+      }
+    } else {
+      this.map = SegmentMap.identity(gh.getBaseGraph().getEdges());
+    }
   }
 
   /** 정복 대상이 아니면 -1. */
   public long segmentOf(int edgeId) {
-    return edgeId;
+    return map.segmentOf(edgeId);
   }
 
-  /** 모르는 ID(음수·범위 밖)는 무시한다 (API 명세 §3.2). */
+  /** 모르는 ID는 무시한다 (API 명세 §3.2). */
   public Set<Integer> edgesOf(Collection<Long> segmentIds) {
-    return segmentIds.stream()
-        .filter(id -> id >= 0 && id < edgeCount)
-        .map(Long::intValue)
-        .collect(Collectors.toSet());
+    return map.edgesOf(segmentIds);
   }
 }

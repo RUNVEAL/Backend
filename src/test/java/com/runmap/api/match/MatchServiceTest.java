@@ -5,10 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.graphhopper.GHRequest;
 import com.graphhopper.GraphHopper;
+import com.graphhopper.matching.MapMatching;
+import com.graphhopper.matching.MatchResult;
+import com.graphhopper.matching.Observation;
 import com.graphhopper.util.PointList;
 import com.runmap.api.global.error.BusinessException;
 import com.runmap.api.global.error.ErrorCode;
+import com.runmap.api.map.domain.AdminAreas;
 import com.runmap.api.map.domain.MapGraphFactory;
+import com.runmap.api.map.domain.SegmentIds;
 import com.runmap.api.match.dto.MatchResponse;
 import com.runmap.api.match.service.MatchService;
 import java.util.ArrayList;
@@ -24,6 +29,8 @@ class MatchServiceTest {
 
   @Autowired GraphHopper gh;
   @Autowired MatchService matchService;
+  @Autowired SegmentIds segmentIds;
+  @Autowired AdminAreas adminAreas;
 
   /** 서교동 fixture 도로를 실제로 따라가는 트랙을 라우팅으로 만든다 (= 노이즈 없는 on-road GPS). */
   private List<double[]> onRoadTrack() {
@@ -80,5 +87,29 @@ class MatchServiceTest {
 
     assertThat(res.matchedPath()).isNotEmpty();
     assertThat(res.matchedPath().get(0)).hasSize(2); // [lng, lat]
+  }
+
+  @Test
+  void returnsSigunguCodesForMatchedTrack() {
+    MatchResponse res = matchService.match("2026-10-27", onRoadTrack());
+
+    assertThat(res.sigunguCodes()).contains("G1"); // 서교동 → 합성 경계상 구 G1
+  }
+
+  @Test
+  void translatesEngineFailureToMatchFailedWithoutLeakingCoords() {
+    MatchService failing =
+        new MatchService(gh, segmentIds, adminAreas) {
+          @Override
+          protected MatchResult matchRun(MapMatching mapMatching, List<Observation> observations) {
+            throw new IllegalArgumentException("Sequence broken at 37.5552,126.9236"); // 좌표 포함
+          }
+        };
+
+    assertThatThrownBy(() -> failing.match("2026-10-27", onRoadTrack()))
+        .isInstanceOfSatisfying(
+            BusinessException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MATCH_FAILED))
+        .satisfies(e -> assertThat(e.getMessage()).doesNotContain("126.9236")); // 좌표 무로그
   }
 }
