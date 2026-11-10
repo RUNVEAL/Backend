@@ -34,6 +34,8 @@ bash deploy/release.sh                    # HEAD 빌드(테스트 포함) → �
 bash deploy/release.sh --rollback <sha>   # 이미 올린 jar 로 (releases/ 에 남아 있음)
 ```
 
+리허설(11/10): 배포 35초 · 롤백 15초 · 다시 배포 35초, 매번 smoke 통과.
+
 ## 지도 교체
 
 ```bash
