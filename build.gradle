@@ -52,6 +52,8 @@ dependencies {
 
 	// 지도 · 경로 엔진 (라이브러리로 내장)
 	implementation 'com.graphhopper:graphhopper-core:11.1'
+	// 맵매칭: GPS 트랙을 그래프에 스냅 (core와 동일 버전)
+	implementation 'com.graphhopper:graphhopper-map-matching:11.1'
 
 	// Lombok
 	compileOnly 'org.projectlombok:lombok'
