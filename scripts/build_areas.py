@@ -27,7 +27,7 @@ def main(src, out_dir):
                 g = wkb.loads(fab.create_multipolygon(o) if o.is_area() else fab.create_linestring(o), hex=True)
             except Exception:  # 닫히지 않은 경계·위치 없는 노드
                 continue
-            scale = [math.cos(math.radians(g.centroid.y)) * 111320, 111320]  # 도 -> m (서울 위도 근사)
+            scale = [math.cos(math.radians(g.centroid.y)) * 111320, 111320]  # 도 -> m (각 지오메트리 centroid 위도 기준, 전국 정확)
             back = shapely.transform(shapely.transform(g, lambda c: c * scale).buffer(buf), lambda c: c / scale)
             feats[kind].append((o.tags.get("name"), back))
     out = Path(out_dir)
@@ -35,7 +35,7 @@ def main(src, out_dir):
     for kind, items in feats.items():
         fc = {"type": "FeatureCollection", "features": [
             {"type": "Feature", "id": f"{kind}_{i}", "properties": {"kind": kind, "name": name},
-             "geometry": json.loads(json.dumps(g.__geo_interface__))}
+             "geometry": g.__geo_interface__}
             for i, (name, g) in enumerate(items)]}
         (out / f"{kind}s.geojson").write_text(json.dumps(fc, ensure_ascii=False))
         print(kind, len(items))
