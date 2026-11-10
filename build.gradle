@@ -79,6 +79,11 @@ springBoot {
 	buildInfo()
 }
 
+// 배포 스크립트가 build/libs/app.jar 를 올린다 (deploy/release.sh)
+tasks.named('bootJar') {
+	archiveFileName = 'app.jar'
+}
+
 tasks.named('test') {
 	useJUnitPlatform()
 }

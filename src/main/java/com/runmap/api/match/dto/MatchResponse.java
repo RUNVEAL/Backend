@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * POST /api/v1/matches 응답 (API 명세 §3.1).
+ * POST /api/v1/match 응답 (API 명세 §3.1).
  *
  * @param segmentIds 달린 것으로 인정된 구간 ID. 중복 없음
  * @param matchedPath 도로에 맞춘 경로선 [lng, lat]

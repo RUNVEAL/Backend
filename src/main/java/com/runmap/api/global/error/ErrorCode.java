@@ -5,8 +5,8 @@ import org.springframework.http.HttpStatus;
 /**
  * 에러의 의미(코드) · 메시지 · HTTP 상태를 한 곳에서 관리한다. 한 번 배포된 코드값의 의미는 바꾸지 않는다(API 계약).
  *
- * <p>지도 API(/routes · /matches · /meta)는 API 명세 §2.8의 문자열 코드를 쓴다. 메시지는 개발자용 영어 한 줄이며 입력값(좌표 등)을 절대
- * 담지 않는다.
+ * <p>지도 API(/routes · /match · /meta)는 API 명세 §2.8의 문자열 코드를 쓴다. 메시지는 개발자용 영어 한 줄이며 입력값(좌표 등)을 절대 담지
+ * 않는다.
  */
 public enum ErrorCode {
 

@@ -32,7 +32,7 @@ import org.springframework.web.util.UrlPathHelper;
 public class RateLimitFilter extends OncePerRequestFilter {
 
   static final Map<String, Integer> LIMITS =
-      Map.of("/api/v1/matches", 30, "/api/v1/routes", 10, "/api/v1/meta", 60);
+      Map.of("/api/v1/match", 30, "/api/v1/routes", 10, "/api/v1/meta", 60);
 
   private final HandlerExceptionResolver resolver;
   private volatile long minute = -1;
