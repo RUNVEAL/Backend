@@ -87,3 +87,15 @@ tasks.named('test') {
 tasks.named('bootRun') {
 	systemProperty 'spring.profiles.active', 'local'
 }
+
+// 오프라인 파이프라인: OSM 그래프 → segments.bin. 기본값은 서교동 fixture(PoC). 대상은 -PosmFile 등으로 지정.
+tasks.register('generateSegments', JavaExec) {
+	group = 'map'
+	description = 'OSM 그래프에서 segments.bin 생성'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.runmap.api.map.pipeline.SegmentGenerator'
+	systemProperty 'runveal.map.osm-file', findProperty('osmFile') ?: 'src/test/resources/fixtures/seogyo.osm.pbf'
+	systemProperty 'runveal.map.graph-location', findProperty('graphLocation') ?: 'build/segments-graph'
+	systemProperty 'runveal.map.srtm-dir', findProperty('srtmDir') ?: 'src/test/resources/fixtures/srtm'
+	systemProperty 'runveal.map.areas-dir', findProperty('areasDir') ?: 'src/test/resources/fixtures/areas'
+}
