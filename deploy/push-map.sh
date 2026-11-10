@@ -19,11 +19,17 @@ else
   ACTIVATE=$([ "${2:-}" = --activate ] && echo 1 || echo 0)
   ssh_ "[ ! -e $R/maps/$VER ]" || { echo "이미 있음 (덮어쓰기 금지): maps/$VER"; exit 1; }
   scp -i "$SSH_KEY" "$TAR" "$SSH_USER@$HOST:/tmp/map-$VER.tar.gz"
-  ssh_ "set -e; cd $R
-    sudo tar --no-same-owner -xzf /tmp/map-$VER.tar.gz -C maps && rm /tmp/map-$VER.tar.gz
-    (cd maps/$VER && sudo sha256sum -c --quiet SHA256SUMS) && echo 'checksum ok'
+  # 임시 폴더에 풀고 → 최상위 폴더 이름 · 체크섬이 맞을 때만 maps/<ver> 로 옮긴다 (반쯤 풀린 버전 폴더를 남기지 않음)
+  ssh_ "cd $R; IN=maps/.incoming-$VER
+    fail() { echo \"중단: \$1\"; sudo rm -rf \$IN; rm -f /tmp/map-$VER.tar.gz; exit 1; }
+    sudo rm -rf \$IN && sudo mkdir \$IN || fail 'mkdir'
+    sudo tar --no-same-owner -xzf /tmp/map-$VER.tar.gz -C \$IN 2>/dev/null || fail 'tar 풀기 실패 (디스크?)'
+    [ \"\$(ls \$IN)\" = $VER ] || fail 'tar 안 최상위 폴더가 $VER 가 아님'
+    (cd \$IN/$VER && sudo sha256sum -c --quiet SHA256SUMS) || fail '체크섬 불일치'
+    sudo mv \$IN/$VER maps/$VER && sudo rmdir \$IN && rm -f /tmp/map-$VER.tar.gz || fail 'mv'
+    echo 'checksum ok'
     sudo chown 1000:1000 maps/$VER/graph   # GraphHopper 가 gh.lock 을 만든다. 파일은 root 소유 그대로
-    sudo cp -R maps/$VER/public public-maps/$VER"
+    sudo cp -R maps/$VER/public public-maps/$VER" || exit 1
   echo "올림: maps/$VER · 공개: /maps/$VER/"
 fi
 

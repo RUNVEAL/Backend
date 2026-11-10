@@ -33,5 +33,5 @@ python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))["files
 
 (cd "$D" && find . -type f ! -name SHA256SUMS | sort | xargs shasum -a 256 > SHA256SUMS)
 mkdir -p build/maps
-COPYFILE_DISABLE=1 tar --no-mac-metadata -C "$STAGE" -czf "$OUT" "$VER" # macOS 확장 속성을 넣지 않는다
+COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs -C "$STAGE" -czf "$OUT" "$VER" # macOS 확장 속성을 넣지 않는다
 echo "완료 → $OUT ($(du -h "$OUT" | cut -f1))"
