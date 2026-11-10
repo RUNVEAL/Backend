@@ -11,6 +11,7 @@ import json
 import math
 import random
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -58,7 +59,15 @@ def main():
         if not ok:
             failed.append(name)
 
-    s, _, raw = call(base, "GET", "/api/v1/meta")
+    # 첫 배포는 HTTPS 인증서 발급(수십 초)이 끝나야 연결된다 → 연결 오류만 60초까지 재시도
+    for attempt in range(12):
+        try:
+            s, _, raw = call(base, "GET", "/api/v1/meta")
+            break
+        except urllib.error.URLError:
+            if attempt == 11:
+                raise
+            time.sleep(5)
     meta = json.loads(raw) if s == 200 else {}
     version = a.version or meta.get("mapVersions", {}).get("current")
     current = meta.get("mapVersions", {}).get("current")
