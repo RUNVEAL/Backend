@@ -62,3 +62,4 @@ logs/
 deploy/.local/
 
 !deploy/.env.example
+deploy/target.env
