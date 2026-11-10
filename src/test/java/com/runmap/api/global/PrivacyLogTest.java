@@ -47,7 +47,7 @@ class PrivacyLogTest {
         assertThat(res).doesNotContainPattern(COORD);
       }
     }
-    mvc.perform(post("/api/v1/matches").contentType(APPLICATION_JSON).content(matchBody(10)));
+    mvc.perform(post("/api/v1/match").contentType(APPLICATION_JSON).content(matchBody(10)));
     assertThat(out.getAll().substring(before)).doesNotContainPattern(COORD);
   }
 }

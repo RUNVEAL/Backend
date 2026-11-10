@@ -7,7 +7,7 @@ import com.runmap.api.match.domain.MatchPurpose;
 import java.util.List;
 
 /**
- * POST /api/v1/matches 요청 (API 명세 §3.1). points 는 [lng, lat] 배열, 앱이 이미 자르고 10초로 줄인 것.
+ * POST /api/v1/match 요청 (API 명세 §3.1). points 는 [lng, lat] 배열, 앱이 이미 자르고 10초로 줄인 것.
  *
  * <p>필드 의미(점 개수·인정 규칙)의 주인은 우선님(계약 C4).
  */

@@ -1,6 +1,7 @@
 package com.runmap.api.global.web;
 
 import static com.runmap.api.TestBodies.LOOP_3K;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -37,6 +38,11 @@ class RateLimitTest {
       mvc.perform(req).andExpect(status().isOk());
     }
     return mvc.perform(req).andExpect(status().isTooManyRequests());
+  }
+
+  @Test
+  void matchPathIsLimited() {
+    assertThat(RateLimitFilter.LIMITS).containsEntry("/api/v1/match", 30);
   }
 
   @Test

@@ -12,6 +12,10 @@ public class OpenApiConfig {
   @Bean
   public OpenAPI openAPI() {
     return new OpenAPI()
-        .info(new Info().title("러닝 코스 앱 API").description("러닝 코스 공유 앱 백엔드 API 문서").version("v1"));
+        .info(
+            new Info()
+                .title("RUNVEAL API")
+                .description("러닝 탐험 지도 백엔드 API (위치 API는 토큰 없이 호출)")
+                .version("v1"));
   }
 }

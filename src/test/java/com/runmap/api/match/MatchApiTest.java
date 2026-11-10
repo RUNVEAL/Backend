@@ -22,7 +22,7 @@ class MatchApiTest {
   @Autowired MockMvc mvc;
 
   private ResultActions matches(String body) throws Exception {
-    return mvc.perform(post("/api/v1/matches").contentType(APPLICATION_JSON).content(body));
+    return mvc.perform(post("/api/v1/match").contentType(APPLICATION_JSON).content(body));
   }
 
   @Test
