@@ -58,7 +58,13 @@ public class MatchService {
     List<double[]> matchedPath = new ArrayList<>();
     double matchedLengthM = 0;
     for (List<double[]> run : runs) {
-      MatchResult result = mapMatching.match(toObservations(run));
+      MatchResult result;
+      try {
+        result = matchRun(mapMatching, toObservations(run));
+      } catch (RuntimeException e) {
+        // 좌표 무로그: GraphHopper 예외 메시지엔 좌표가 들어가므로 원본을 넘기지 않는다
+        throw new BusinessException(ErrorCode.MATCH_FAILED);
+      }
       for (EdgeMatch em : result.getEdgeMatches()) {
         EdgeIteratorState edge = em.getEdgeState();
         long segment = segmentIds.segmentOf(edge.getEdge());
@@ -79,6 +85,11 @@ public class MatchService {
         List.copyOf(matchedPath),
         (int) Math.round(matchedLengthM),
         List.copyOf(sigungu));
+  }
+
+  /** 엔진 호출을 분리 — 테스트에서 실패를 주입할 수 있게 한다. */
+  protected MatchResult matchRun(MapMatching mapMatching, List<Observation> observations) {
+    return mapMatching.match(observations);
   }
 
   /** 서비스 지역 안 점들의 연속 구간으로 나눈다. 매칭에 필요한 최소 점 수에 못 미치는 구간은 버린다. */
