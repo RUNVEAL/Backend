@@ -81,4 +81,11 @@ class MatchServiceTest {
     assertThat(res.matchedPath()).isNotEmpty();
     assertThat(res.matchedPath().get(0)).hasSize(2); // [lng, lat]
   }
+
+  @Test
+  void returnsSigunguCodesForMatchedTrack() {
+    MatchResponse res = matchService.match("2026-10-27", onRoadTrack());
+
+    assertThat(res.sigunguCodes()).contains("G1"); // 서교동 → 합성 경계상 구 G1
+  }
 }

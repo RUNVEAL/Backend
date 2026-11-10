@@ -5,11 +5,14 @@ import com.graphhopper.matching.EdgeMatch;
 import com.graphhopper.matching.MapMatching;
 import com.graphhopper.matching.MatchResult;
 import com.graphhopper.matching.Observation;
+import com.graphhopper.storage.NodeAccess;
+import com.graphhopper.util.EdgeIteratorState;
 import com.graphhopper.util.PMap;
 import com.graphhopper.util.PointList;
 import com.graphhopper.util.shapes.GHPoint;
 import com.runmap.api.global.error.BusinessException;
 import com.runmap.api.global.error.ErrorCode;
+import com.runmap.api.map.domain.AdminAreas;
 import com.runmap.api.map.domain.MapGraphFactory;
 import com.runmap.api.map.domain.SegmentIds;
 import com.runmap.api.match.dto.MatchResponse;
@@ -32,10 +35,12 @@ public class MatchService {
 
   private final GraphHopper gh;
   private final SegmentIds segmentIds;
+  private final AdminAreas adminAreas;
 
-  public MatchService(GraphHopper gh, SegmentIds segmentIds) {
+  public MatchService(GraphHopper gh, SegmentIds segmentIds, AdminAreas adminAreas) {
     this.gh = gh;
     this.segmentIds = segmentIds;
+    this.adminAreas = adminAreas;
   }
 
   public MatchResponse match(String mapVersion, List<double[]> points) {
@@ -47,15 +52,21 @@ public class MatchService {
       throw new BusinessException(ErrorCode.OUT_OF_SERVICE_AREA);
     }
 
+    NodeAccess nodes = gh.getBaseGraph().getNodeAccess();
     LinkedHashSet<Long> segments = new LinkedHashSet<>();
+    LinkedHashSet<String> sigungu = new LinkedHashSet<>();
     List<double[]> matchedPath = new ArrayList<>();
     double matchedLengthM = 0;
     for (List<double[]> run : runs) {
       MatchResult result = mapMatching.match(toObservations(run));
       for (EdgeMatch em : result.getEdgeMatches()) {
-        long segment = segmentIds.segmentOf(em.getEdgeState().getEdge());
+        EdgeIteratorState edge = em.getEdgeState();
+        long segment = segmentIds.segmentOf(edge.getEdge());
         if (segment >= 0) {
           segments.add(segment);
+          double lat = (nodes.getLat(edge.getBaseNode()) + nodes.getLat(edge.getAdjNode())) / 2;
+          double lng = (nodes.getLon(edge.getBaseNode()) + nodes.getLon(edge.getAdjNode())) / 2;
+          adminAreas.guAt(lat, lng).ifPresent(sigungu::add);
         }
       }
       appendPoints(matchedPath, result.getMergedPath().calcPoints());
@@ -67,7 +78,7 @@ public class MatchService {
         List.copyOf(segments),
         List.copyOf(matchedPath),
         (int) Math.round(matchedLengthM),
-        List.of());
+        List.copyOf(sigungu));
   }
 
   /** 서비스 지역 안 점들의 연속 구간으로 나눈다. 매칭에 필요한 최소 점 수에 못 미치는 구간은 버린다. */

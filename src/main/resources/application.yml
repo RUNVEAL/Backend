@@ -58,3 +58,4 @@ runveal:
     graph-location: build/local-graph
     srtm-dir: src/test/resources/fixtures/srtm
     areas-dir: src/test/resources/fixtures/areas
+    admin-dir: src/test/resources/fixtures/admin
