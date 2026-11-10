@@ -4,10 +4,13 @@ import com.graphhopper.GraphHopper;
 import com.graphhopper.GraphHopperConfig;
 import com.graphhopper.config.LMProfile;
 import com.graphhopper.config.Profile;
+import com.graphhopper.routing.WeightingFactory;
+import com.graphhopper.routing.weighting.Weighting;
 import com.graphhopper.util.CustomModel;
 import com.graphhopper.util.GHUtility;
 import com.runmap.api.map.config.MapProperties;
 import java.util.List;
+import java.util.Set;
 
 /**
  * GraphHopper 설정의 단 한 곳 (PoC poc/gh/config.yml 이식). 맵매칭·파이프라인(우선님)도 이 메서드로 같은 그래프를 만든다.
@@ -17,6 +20,9 @@ import java.util.List;
 public final class MapGraphFactory {
 
   public static final String PROFILE = "foot";
+
+  /** 요청 hint: 벌점을 줄 엣지 집합 (Set&lt;Integer&gt;, PMap.putObject). */
+  public static final String EXPLORED_EDGES_HINT = "runveal.explored_edges";
 
   static final String ENCODED_VALUES =
       "foot_access, foot_priority, foot_average_speed, foot_road_access, hike_rating,"
@@ -50,7 +56,18 @@ public final class MapGraphFactory {
     // LM: 요청마다 custom model 을 바꿔도 빠르다 (CH는 요청별 가중치 불가)
     config.setLMProfiles(List.of(new LMProfile(PROFILE)));
 
-    GraphHopper gh = new GraphHopper();
+    GraphHopper gh =
+        new GraphHopper() {
+          @Override
+          protected WeightingFactory createWeightingFactory() {
+            WeightingFactory base = super.createWeightingFactory();
+            return (profile, hints, disableTurnCosts) -> {
+              Weighting w = base.createWeighting(profile, hints, disableTurnCosts);
+              Set<Integer> explored = hints.getObject(EXPLORED_EDGES_HINT, null);
+              return explored == null ? w : new ExploredPenaltyWeighting(w, explored);
+            };
+          }
+        };
     gh.setImportRegistry(AreaEncodedValues.registry()); // init 전에
     return gh.init(config);
   }
