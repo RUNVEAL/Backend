@@ -47,19 +47,26 @@ public final class SegmentLinesGeoJson {
       Path outDir, GraphHopper gh, long[] segmentIdByEdge, AdminAreas areas) throws IOException {
     BaseGraph graph = gh.getBaseGraph();
     NodeAccess nodes = graph.getNodeAccess();
-    Map<String, List<Feature>> byGu = new LinkedHashMap<>();
-    groupEdges(segmentIdByEdge)
-        .forEach(
-            (segmentId, edges) ->
-                guOf(graph, nodes, edges.get(0), areas)
-                    .ifPresent(
-                        gu ->
-                            byGu.computeIfAbsent(gu, key -> new ArrayList<>())
-                                .add(buildFeature(graph, segmentId, edges))));
-    for (Map.Entry<String, List<Feature>> entry : byGu.entrySet()) {
-      writeCollection(outDir.resolve("segments-" + entry.getKey() + ".geojson"), entry.getValue());
+    Map<Long, List<Integer>> edgesBySegment = groupEdges(segmentIdByEdge);
+
+    // 1) segmentId → 구 (지오메트리 없이 — 메모리 가볍게)
+    Map<String, List<Long>> segmentsByGu = new LinkedHashMap<>();
+    edgesBySegment.forEach(
+        (segmentId, edges) ->
+            guOf(graph, nodes, edges.get(0), areas)
+                .ifPresent(
+                    gu ->
+                        segmentsByGu.computeIfAbsent(gu, key -> new ArrayList<>()).add(segmentId)));
+
+    // 2) 구 단위로 지오메트리 생성·기록 (전국이어도 한 구 분량만 메모리에 올렸다 해제)
+    for (Map.Entry<String, List<Long>> entry : segmentsByGu.entrySet()) {
+      List<Feature> features = new ArrayList<>(entry.getValue().size());
+      for (long segmentId : entry.getValue()) {
+        features.add(buildFeature(graph, segmentId, edgesBySegment.get(segmentId)));
+      }
+      writeCollection(outDir.resolve("segments-" + entry.getKey() + ".geojson"), features);
     }
-    return List.copyOf(byGu.keySet());
+    return List.copyOf(segmentsByGu.keySet());
   }
 
   private static void writeCollection(Path out, List<Feature> features) throws IOException {
