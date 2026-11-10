@@ -32,7 +32,10 @@ bash deploy/azure-setup.sh        # RG · VM · 방화벽(80/443 전체, 22 내 
 `main` 에 머지되면 `.github/workflows/deploy.yml` 이 돈다: 테스트 → jar → (VM 이 꺼져 있으면 켜고) → 이 러너 IP 에만 SSH 를 잠깐 열고 → `release.sh --jar` → smoke → SSH 닫기.
 배포가 실패하면(healthy·smoke) `release.sh` 가 **직전 jar 로 자동 롤백**하고 job 은 빨간불로 끝난다.
 
-- Azure 로그인은 OIDC (Managed Identity `runveal-gha`, 권한은 VM·NSG 두 개뿐). 장기 비밀은 배포 전용 SSH 키(`VM_SSH_KEY`) 하나
+- Azure 로그인은 OIDC (키 없음). 아이덴티티 2개:
+  - `runveal-gha` (배포): **main 토큰만**, VM Contributor(VM) + Network Contributor(NSG). VM Contributor 는 run-command 로 root 가 되므로 main 에만 준다
+  - `runveal-gha-power` (전원): develop·main, 커스텀 역할 `RUNVEAL VM Power` = VM 읽기·켜기·끄기 4개 권한만
+- 장기 비밀은 배포 전용 SSH 키(`VM_SSH_KEY`) 하나. 레포 쓰기 권한 = 운영 권한이라고 보고 협업자를 관리한다 (무료 플랜이라 브랜치 보호 없음)
 - 호스트 키는 `VM_KNOWN_HOSTS` 에 고정 (처음 보는 키는 거부)
 - 다시 배포: `gh workflow run deploy.yml -R RUNVEAL/Backend --ref main`
 - 설정을 다시 만들 때: `GH_TOKEN=$(gh auth token --user inoaole) bash deploy/cicd-setup.sh`
@@ -47,10 +50,11 @@ gh workflow run vm-power.yml -R RUNVEAL/Backend -f action=status
 gh run watch -R RUNVEAL/Backend $(gh run list -R RUNVEAL/Backend -w vm-power.yml -L 1 --json databaseId -q '.[0].databaseId')
 ```
 
-- 자동: 매일 **02:00 KST 끄기 · 09:00 KST 켜기** (`vm-power.yml` 의 `schedule`, 바꾸려면 cron 수정)
+- 자동: 매일 **02:07 KST 끄기 · 09:07 KST 켜기** (`vm-power.yml` 의 `schedule`, 바꾸려면 cron 과 `case` 를 같이 수정). 수동으로 끈 날도 09:07 에 다시 켜진다
 - 휴대폰: GitHub 앱 → RUNVEAL/Backend → Actions → **VM power** → Run workflow
 - 클라우드 Claude(claude.ai/code): 환경 변수에 `GH_TOKEN` 이 있어야 한다. RUNVEAL/Backend 에 **Actions: Read and write** 만 준 fine-grained PAT 를 만들어 넣는다 (Azure 키는 필요 없다)
-- 배포와 같은 `concurrency` 그룹이라 배포 도중에 꺼지지 않는다
+- stop 은 배포와 같은 `concurrency` 그룹이라 배포 도중에 꺼지지 않는다 (start·status 는 따로 돌아서 대기 중인 배포를 밀어내지 않는다)
+- 배포 실패 시 롤백은 jar 와 `compose.yml`·`Caddyfile` 을 함께 되돌린다. 남은 임시 SSH 규칙(`gha-ssh-*`)은 다음 배포가 지운다
 
 ## 코드 배포 / 롤백 (수동)
 
@@ -102,7 +106,7 @@ $S 'cd /srv/runveal && sudo docker compose logs --no-color | grep -cE "37\.5552|
 | `Standard_B2s_v2` 서울, 24시간 | 약 $76 |
 | 디스크 30GB StandardSSD + 고정 IP | 약 $6 |
 
-24시간 켜두면 약 5~6주. 자동 스케줄(하루 17시간)이면 약 7~8주. 안 쓰는 날은 `stop`. B 시리즈는 버스트형이라 CPU 크레딧을 다 쓰면 느려진다 (부하 테스트를 길게 돌릴 때 주의).
+24시간 켜두면 약 5주. 자동 스케줄(하루 17시간, 월 약 $60)이면 약 7주. 안 쓰는 날은 `stop`. B 시리즈는 버스트형이라 CPU 크레딧을 다 쓰면 느려진다 (부하 테스트를 길게 돌릴 때 주의).
 
 ## 아직 없는 것
 

@@ -8,8 +8,8 @@ on:
     branches: [main]
   workflow_dispatch: # 다시 배포: gh workflow run deploy.yml -R RUNVEAL/Backend --ref main
 
+# 기본은 읽기만. Azure 토큰(id-token)은 deploy job 에만 준다 (빌드 중 실행되는 의존성·테스트 코드가 토큰을 못 받게)
 permissions:
-  id-token: write # Azure OIDC
   contents: read
 
 # 배포·전원 제어는 한 번에 하나씩. 진행 중인 배포는 취소하지 않는다
@@ -38,9 +38,12 @@ jobs:
 
   deploy:
     needs: build
-    if: github.ref == 'refs/heads/main' # develop 에서 수동 실행해도 운영에 배포하지 않는다
+    if: github.ref == 'refs/heads/main' # 실수 방지. 보안 경계는 Azure 쪽 (배포 아이덴티티는 main 토큰만 받는다)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30 # 최악: VM 켜기 + 배포 실패 + 롤백까지 끝나야 한다
+    permissions:
+      contents: read
+      id-token: write # Azure OIDC
     env:
       RG: runveal-rg
       VM: runveal-api
@@ -75,9 +78,12 @@ jobs:
         run: RELEASE_SHA="${GITHUB_SHA::7}" bash deploy/release.sh --jar app.jar
       - name: SSH 닫기
         if: always()
-        run: '[ -f deploy/target.env ] && bash deploy/gha-ssh.sh close || true'
+        run: if [ -f deploy/target.env ]; then bash deploy/gha-ssh.sh close; fi # 실패하면 숨기지 않고 빨간불
       - name: Summary
         if: always()
+        env:
+          RESULT: ${{ job.status == 'success' && '✅ 배포 완료' || '❌ 배포 실패 (로그의 롤백 결과 확인)' }}
+          VM_HOST: ${{ vars.VM_HOST }}
         run: |
-          echo "### ${{ job.status == 'success' && '✅ 배포 완료' || '❌ 배포 실패 (직전 버전으로 롤백 시도)' }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- app: \`${GITHUB_SHA::7}\` → https://${{ vars.VM_HOST }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "### $RESULT" >> "$GITHUB_STEP_SUMMARY"
+          echo "- app: \`${GITHUB_SHA::7}\` → https://$VM_HOST" >> "$GITHUB_STEP_SUMMARY"

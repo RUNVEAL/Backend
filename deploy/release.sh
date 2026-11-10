@@ -45,7 +45,9 @@ verify() {
 }
 
 PREV=$(ssh_ "readlink $R/app.jar 2>/dev/null | sed -E 's#releases/app-(.*)\.jar#\1#'" || true)
-ssh_ "cd $R && sudo install -m 644 /tmp/compose.yml /tmp/Caddyfile . && rm /tmp/compose.yml /tmp/Caddyfile"
+# 설정 파일도 jar 와 함께 되돌릴 수 있게 직전 것을 .prev 로 남긴다
+ssh_ "cd $R && for f in compose.yml Caddyfile; do [ -f \$f ] && sudo cp -f \$f \$f.prev; done
+  sudo install -m 644 /tmp/compose.yml /tmp/Caddyfile . && rm /tmp/compose.yml /tmp/Caddyfile"
 if switch "$SHA" && verify; then
   echo "배포 완료: app-$SHA (직전 app-${PREV:-없음}) → https://$HOST"
   exit 0
@@ -53,7 +55,12 @@ fi
 
 echo "배포 실패: app-$SHA"
 if [ "$MODE" != --rollback ] && [ -n "$PREV" ] && [ "$PREV" != "$SHA" ]; then
-  echo "직전 app-$PREV 로 롤백"
-  switch "$PREV" && verify && echo "롤백 완료: app-$PREV"
+  echo "직전 app-$PREV 와 직전 설정(compose.yml · Caddyfile)으로 롤백"
+  ssh_ "cd $R && for f in compose.yml Caddyfile; do [ -f \$f.prev ] && sudo cp -f \$f.prev \$f; done"
+  if switch "$PREV" && verify; then
+    echo "롤백 완료: app-$PREV"
+  else
+    echo "::error::ROLLBACK FAILED — 서버를 직접 확인하세요 (deploy/README.md 운영 명령)"
+  fi
 fi
 exit 1
