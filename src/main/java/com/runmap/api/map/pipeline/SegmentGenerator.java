@@ -37,7 +37,7 @@ public final class SegmentGenerator {
     try {
       long[] segmentIdByEdge = SegmentBuilder.build(gh);
       AdminAreas areas = new AdminAreas(adminDir);
-      MapIndex index = MapIndex.from(version, RegionTotals.compute(gh, areas));
+      MapIndex index = MapIndex.from(version, RegionTotals.compute(gh, areas, segmentIdByEdge));
 
       Path dir = Path.of(graphLocation);
       SegmentsFile.write(dir.resolve("segments.bin"), segmentIdByEdge);

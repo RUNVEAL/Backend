@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -37,6 +38,11 @@ public class SegmentIds {
   /** 정복 대상이 아니면 -1. */
   public long segmentOf(int edgeId) {
     return map.segmentOf(edgeId);
+  }
+
+  /** 한 segment에 속한 edge들 (없으면 빈 목록). */
+  public List<Integer> edgesOf(long segmentId) {
+    return map.edgesOf(segmentId);
   }
 
   /** 모르는 ID는 무시한다 (API 명세 §3.2). */
