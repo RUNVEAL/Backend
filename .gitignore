@@ -57,3 +57,8 @@ application-secret.yaml
 ### Logs ###
 *.log
 logs/
+
+### 배포 ###
+deploy/.local/
+
+!deploy/.env.example
