@@ -17,8 +17,10 @@ import com.runmap.api.map.domain.MapGraphFactory;
 import com.runmap.api.map.domain.SegmentIds;
 import com.runmap.api.match.dto.MatchResponse;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 
 /**
@@ -55,6 +57,7 @@ public class MatchService {
     NodeAccess nodes = gh.getBaseGraph().getNodeAccess();
     LinkedHashSet<Long> segments = new LinkedHashSet<>();
     LinkedHashSet<String> sigungu = new LinkedHashSet<>();
+    LinkedHashMap<Long, String> dongBySegment = new LinkedHashMap<>();
     List<double[]> matchedPath = new ArrayList<>();
     double matchedLengthM = 0;
     for (List<double[]> run : runs) {
@@ -73,6 +76,8 @@ public class MatchService {
           double lat = (nodes.getLat(edge.getBaseNode()) + nodes.getLat(edge.getAdjNode())) / 2;
           double lng = (nodes.getLon(edge.getBaseNode()) + nodes.getLon(edge.getAdjNode())) / 2;
           adminAreas.guAt(lat, lng).ifPresent(sigungu::add);
+          // 구간당 동 하나(처음 만난 edge 기준). dongLengthM(분모)과 같은 '중점 소속' 규칙.
+          adminAreas.codeAt(lat, lng).ifPresent(code -> dongBySegment.putIfAbsent(segment, code));
         }
       }
       appendPoints(matchedPath, result.getMergedPath().calcPoints());
@@ -84,7 +89,8 @@ public class MatchService {
         List.copyOf(segments),
         List.copyOf(matchedPath),
         (int) Math.round(matchedLengthM),
-        List.copyOf(sigungu));
+        List.copyOf(sigungu),
+        Map.copyOf(dongBySegment));
   }
 
   /** 엔진 호출을 분리 — 테스트에서 실패를 주입할 수 있게 한다. */

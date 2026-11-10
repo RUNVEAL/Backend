@@ -97,6 +97,16 @@ class MatchServiceTest {
   }
 
   @Test
+  void returnsDongCodePerMatchedSegment() {
+    MatchResponse res = matchService.match("2026-10-27", onRoadTrack());
+
+    assertThat(res.dongBySegment()).isNotEmpty();
+    assertThat(res.dongBySegment().values()).contains("B"); // 서교동 트랙 → 합성 경계상 동 B
+    // 키(동이 매겨진 구간)는 인정된 구간 집합의 부분집합
+    assertThat(res.segmentIds()).containsAll(res.dongBySegment().keySet());
+  }
+
+  @Test
   void translatesEngineFailureToMatchFailedWithoutLeakingCoords() {
     MatchService failing =
         new MatchService(gh, segmentIds, adminAreas) {
