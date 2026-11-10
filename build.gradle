@@ -99,7 +99,7 @@ tasks.register('generateSegments', JavaExec) {
 	description = 'OSM 그래프에서 segments.bin 생성'
 	classpath = sourceSets.main.runtimeClasspath
 	mainClass = 'com.runmap.api.map.pipeline.SegmentGenerator'
-	maxHeapSize = '4g' // 서울 전체 OSM import 대비
+	maxHeapSize = findProperty('heap') ?: '4g' // 전국이면 -Pheap=16g 등으로 상향
 	systemProperty 'runveal.map.version', findProperty('mapVersion') ?: 'dev'
 	systemProperty 'runveal.map.osm-file', findProperty('osmFile') ?: 'src/test/resources/fixtures/seogyo.osm.pbf'
 	systemProperty 'runveal.map.graph-location', findProperty('graphLocation') ?: 'build/segments-graph'
