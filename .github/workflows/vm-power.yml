@@ -1,0 +1,74 @@
+# 운영 VM 켜기·끄기·상태. 어디서든 같은 경로:
+#   gh workflow run vm-power.yml -R RUNVEAL/Backend -f action=start|stop|status
+#   또는 GitHub 앱 → Actions → VM power → Run workflow
+# 크레딧 절약: 매일 02:00 KST 끄고 09:00 KST 켠다 (schedule 은 default 브랜치 develop 기준).
+# stop = deallocate (요금이 멈춘다). 디스크·IP 요금만 남는다.
+name: VM power
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: start · stop · status
+        type: choice
+        options: [status, start, stop]
+        default: status
+  schedule:
+    - cron: '0 17 * * *' # 02:00 KST stop
+    - cron: '0 0 * * *' # 09:00 KST start
+
+permissions:
+  id-token: write
+  contents: read
+
+# 배포 중에 꺼지지 않게 deploy.yml 과 같은 그룹
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  power:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RG: runveal-rg
+      VM: runveal-api
+      HOST: ${{ vars.VM_HOST }}
+      SCHEDULE: ${{ github.event.schedule }}
+      INPUT_ACTION: ${{ inputs.action }}
+    steps:
+      - name: 할 일
+        id: what
+        run: |
+          case "$SCHEDULE" in
+            '0 17 * * *') a=stop ;;
+            '0 0 * * *') a=start ;;
+            *) a=$INPUT_ACTION ;;
+          esac
+          case "$a" in start|stop|status) ;; *) echo "알 수 없는 action: $a"; exit 1 ;; esac
+          echo "action=$a" >> "$GITHUB_OUTPUT"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: ${{ steps.what.outputs.action }}
+        env:
+          ACTION: ${{ steps.what.outputs.action }}
+        run: |
+          case "$ACTION" in
+            start) az vm start -g "$RG" -n "$VM" ;;
+            stop) az vm deallocate -g "$RG" -n "$VM" ;;
+          esac
+          state=$(az vm get-instance-view -g "$RG" -n "$VM" \
+            --query "instanceView.statuses[?starts_with(code,'PowerState/')].code | [0]" -o tsv)
+          echo "### VM \`$VM\`: ${state#PowerState/}" >> "$GITHUB_STEP_SUMMARY"
+          [ "$state" = PowerState/running ] || exit 0
+          # 켜져 있으면 API 가 실제로 응답하는지까지 (부팅 직후 그래프 로딩 대기)
+          for _ in $(seq 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$HOST/api/v1/meta" || true)
+            [ "$code" = 200 ] && break
+            sleep 5
+          done
+          echo "- API \`/api/v1/meta\`: $code → https://$HOST" >> "$GITHUB_STEP_SUMMARY"
+          [ "$code" = 200 ]

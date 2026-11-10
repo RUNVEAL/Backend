@@ -1,0 +1,83 @@
+# CD: main 에 머지되면 테스트 → 운영 배포 → smoke. 실패하면 release.sh 가 직전 jar 로 되돌린다.
+# Azure 는 OIDC(키 없음, Managed Identity runveal-gha: VM·NSG 권한만). 비밀은 배포 전용 SSH 키 하나.
+# 설정: deploy/cicd-setup.sh · 운영 가이드: deploy/README.md
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # 다시 배포: gh workflow run deploy.yml -R RUNVEAL/Backend --ref main
+
+permissions:
+  id-token: write # Azure OIDC
+  contents: read
+
+# 배포·전원 제어는 한 번에 하나씩. 진행 중인 배포는 취소하지 않는다
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and test
+        run: ./gradlew build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: build/libs/app.jar
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' # develop 에서 수동 실행해도 운영에 배포하지 않는다
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RG: runveal-rg
+      VM: runveal-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: VM 켜기 (꺼져 있으면)
+        run: |
+          state=$(az vm get-instance-view -g "$RG" -n "$VM" \
+            --query "instanceView.statuses[?starts_with(code,'PowerState/')].code | [0]" -o tsv)
+          echo "power: $state"
+          [ "$state" = PowerState/running ] || az vm start -g "$RG" -n "$VM"
+      - name: SSH 준비 (배포 키 · 고정 호스트 키 · 이 러너 IP 만 22 허용)
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_KNOWN_HOSTS: ${{ vars.VM_KNOWN_HOSTS }}
+          VM_HOST: ${{ vars.VM_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$VM_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'RG=%s\nVM=%s\nHOST=%s\nSSH_USER=runveal\nSSH_KEY=%s\n' "$RG" "$VM" "$VM_HOST" ~/.ssh/deploy > deploy/target.env
+          bash deploy/gha-ssh.sh open
+      - name: 배포 (실패하면 직전 jar 로 자동 롤백)
+        run: RELEASE_SHA="${GITHUB_SHA::7}" bash deploy/release.sh --jar app.jar
+      - name: SSH 닫기
+        if: always()
+        run: '[ -f deploy/target.env ] && bash deploy/gha-ssh.sh close || true'
+      - name: Summary
+        if: always()
+        run: |
+          echo "### ${{ job.status == 'success' && '✅ 배포 완료' || '❌ 배포 실패 (직전 버전으로 롤백 시도)' }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- app: \`${GITHUB_SHA::7}\` → https://${{ vars.VM_HOST }}" >> "$GITHUB_STEP_SUMMARY"
