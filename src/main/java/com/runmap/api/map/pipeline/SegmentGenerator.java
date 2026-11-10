@@ -6,6 +6,7 @@ import com.runmap.api.map.domain.AdminAreas;
 import com.runmap.api.map.domain.MapGraphFactory;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -42,11 +43,10 @@ public final class SegmentGenerator {
       SegmentsFile.write(dir.resolve("segments.bin"), segmentIdByEdge);
       MapIndexFile.write(dir.resolve("index.json"), index);
       IndexGeoJson.write(dir.resolve("index.geojson"), Path.of(adminDir, "dong.geojson"), index);
-      SegmentLinesGeoJson.write(dir.resolve("segments.geojson"), gh, segmentIdByEdge);
-      ManifestFile.write(
-          dir.resolve("manifest.json"),
-          Manifest.of(
-              version, List.of("segments.bin", "index.json", "index.geojson", "segments.geojson")));
+      List<String> gus = SegmentLinesGeoJson.writeByGu(dir, gh, segmentIdByEdge, areas);
+      List<String> files = new ArrayList<>(List.of("segments.bin", "index.json", "index.geojson"));
+      gus.forEach(gu -> files.add("segments-" + gu + ".geojson"));
+      ManifestFile.write(dir.resolve("manifest.json"), Manifest.of(version, files));
 
       long segments = Arrays.stream(segmentIdByEdge).filter(s -> s >= 0).distinct().count();
       System.out.printf(
