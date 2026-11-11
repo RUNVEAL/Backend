@@ -19,11 +19,13 @@ az identity create -g "$RG" -n "$MI" -o none
 CLIENT_ID=$(az identity show -g "$RG" -n "$MI" --query clientId -o tsv)
 PRINCIPAL_ID=$(az identity show -g "$RG" -n "$MI" --query principalId -o tsv)
 
-fed() { # <identity> <branch>
-  az identity federated-credential show -g "$RG" --identity-name "$1" -n "gha-$2" -o none 2>/dev/null ||
-    az identity federated-credential create -g "$RG" --identity-name "$1" -n "gha-$2" \
-      --issuer https://token.actions.githubusercontent.com \
-      --subject "repo:$REPO:ref:refs/heads/$2" --audiences api://AzureADTokenExchange -o none
+# GitHub 이 보내는 subject 는 ID 가 박힌 형식: repo:RUNVEAL@<ownerId>/Backend@<repoId>:ref:...
+# (이름만 쓴 repo:RUNVEAL/Backend 로 등록하면 AADSTS700213 로 로그인 실패)
+SUBJECT_REPO=$(gh api "repos/$REPO" --jq '"\(.owner.login)@\(.owner.id)/\(.name)@\(.id)"')
+fed() { # <identity> <branch> — create 는 같은 이름이면 덮어쓴다 (subject 가 바뀌어도 다시 돌리면 맞춰짐)
+  az identity federated-credential create -g "$RG" --identity-name "$1" -n "gha-$2" \
+    --issuer https://token.actions.githubusercontent.com \
+    --subject "repo:$SUBJECT_REPO:ref:refs/heads/$2" --audiences api://AzureADTokenExchange -o none
 }
 echo "[2/5] federated credential: 배포 아이덴티티는 main 만"
 fed "$MI" main
