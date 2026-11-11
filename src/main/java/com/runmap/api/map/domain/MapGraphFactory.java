@@ -47,7 +47,8 @@ public final class MapGraphFactory {
     config.putObject("import.osm.ignored_highways", "motorway, trunk");
     config.putObject("routing.snap_preventions_default", "tunnel, bridge, ferry");
     config.putObject("routing.max_visited_nodes", 1_500_000);
-    config.putObject("custom_areas.directory", p.areasDir());
+    // custom_areas.directory 는 쓰지 않는다 — 폴리곤이 프로파일에 묶여 런타임 routing 때 전국 수백 MB를
+    // 요청마다 직렬화해 OOM·지연을 유발한다. near_park·near_river 는 import 직후 AreaEncodedValues.bake 가 채운다.
     CustomModel foot =
         CustomModel.merge(
             GHUtility.loadCustomModelFromJar("foot.json"),

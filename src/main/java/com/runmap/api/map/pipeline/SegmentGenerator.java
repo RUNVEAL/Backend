@@ -3,6 +3,7 @@ package com.runmap.api.map.pipeline;
 import com.graphhopper.GraphHopper;
 import com.runmap.api.map.config.MapProperties;
 import com.runmap.api.map.domain.AdminAreas;
+import com.runmap.api.map.domain.AreaEncodedValues;
 import com.runmap.api.map.domain.MapGraphFactory;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -33,7 +34,11 @@ public final class SegmentGenerator {
             require("runveal.map.srtm-dir"),
             require("runveal.map.areas-dir"));
 
+    boolean fresh = !java.nio.file.Files.exists(java.nio.file.Path.of(graphLocation, "properties"));
     GraphHopper gh = MapGraphFactory.create(props).importOrLoad();
+    if (fresh) {
+      AreaEncodedValues.bake(gh, props.areasDir()); // import 직후 near_park·near_river 세팅
+    }
     try {
       long[] segmentIdByEdge = SegmentBuilder.build(gh);
       AdminAreas areas = new AdminAreas(adminDir);
