@@ -47,6 +47,11 @@ public final class SegmentMap {
     return (edgeId >= 0 && edgeId < segmentIdByEdge.length) ? segmentIdByEdge[edgeId] : -1L;
   }
 
+  /** 한 segment에 속한 edge들 (없으면 빈 목록). centroid 계산용. */
+  public List<Integer> edgesOf(long segmentId) {
+    return edgesBySegment.getOrDefault(segmentId, List.of());
+  }
+
   /** 모르는 segmentId는 무시. */
   public Set<Integer> edgesOf(Collection<Long> segmentIds) {
     Set<Integer> edges = new HashSet<>();

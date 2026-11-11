@@ -5,6 +5,7 @@ import com.graphhopper.matching.EdgeMatch;
 import com.graphhopper.matching.MapMatching;
 import com.graphhopper.matching.MatchResult;
 import com.graphhopper.matching.Observation;
+import com.graphhopper.storage.BaseGraph;
 import com.graphhopper.storage.NodeAccess;
 import com.graphhopper.util.EdgeIteratorState;
 import com.graphhopper.util.PMap;
@@ -15,6 +16,7 @@ import com.runmap.api.global.error.ErrorCode;
 import com.runmap.api.map.domain.AdminAreas;
 import com.runmap.api.map.domain.MapGraphFactory;
 import com.runmap.api.map.domain.SegmentIds;
+import com.runmap.api.map.domain.Segments;
 import com.runmap.api.match.dto.MatchResponse;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -54,7 +56,8 @@ public class MatchService {
       throw new BusinessException(ErrorCode.OUT_OF_SERVICE_AREA);
     }
 
-    NodeAccess nodes = gh.getBaseGraph().getNodeAccess();
+    BaseGraph graph = gh.getBaseGraph();
+    NodeAccess nodes = graph.getNodeAccess();
     LinkedHashSet<Long> segments = new LinkedHashSet<>();
     LinkedHashSet<String> sigungu = new LinkedHashSet<>();
     LinkedHashMap<Long, String> dongBySegment = new LinkedHashMap<>();
@@ -76,12 +79,20 @@ public class MatchService {
           double lat = (nodes.getLat(edge.getBaseNode()) + nodes.getLat(edge.getAdjNode())) / 2;
           double lng = (nodes.getLon(edge.getBaseNode()) + nodes.getLon(edge.getAdjNode())) / 2;
           adminAreas.guAt(lat, lng).ifPresent(sigungu::add);
-          // 구간당 동 하나(처음 만난 edge 기준). dongLengthM(분모)과 같은 '중점 소속' 규칙.
-          adminAreas.codeAt(lat, lng).ifPresent(code -> dongBySegment.putIfAbsent(segment, code));
         }
       }
       appendPoints(matchedPath, result.getMergedPath().calcPoints());
       matchedLengthM += result.getMatchLength();
+    }
+
+    // 구간→동: 분모(RegionTotals)와 같은 규칙(구간 전체 edge의 centroid가 속한 동)으로 배정해야
+    // 경계를 가로지르는 구간에서도 정복률이 어긋나지 않는다.
+    for (long segment : segments) {
+      List<Integer> segmentEdges = segmentIds.edgesOf(segment);
+      if (!segmentEdges.isEmpty()) {
+        double[] center = Segments.centroid(graph, nodes, segmentEdges);
+        adminAreas.codeAt(center[0], center[1]).ifPresent(code -> dongBySegment.put(segment, code));
+      }
     }
 
     return new MatchResponse(
