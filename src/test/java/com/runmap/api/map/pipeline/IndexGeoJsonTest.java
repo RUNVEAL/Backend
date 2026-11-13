@@ -44,6 +44,42 @@ class IndexGeoJsonTest {
     assertThat(Files.readString(out)).contains("\"lengthM\":100"); // 길이 정보는 유지
   }
 
+  @Test
+  void roundsCoordinatesToSixDecimals(@TempDir Path dir) throws IOException {
+    // 소수 12~14자리의 과한 정밀도 좌표 (원본 vuski 데이터처럼)
+    Path src = dir.resolve("dong.geojson");
+    Files.writeString(
+        src,
+        "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\","
+            + "\"properties\":{\"code\":\"A\",\"gu\":\"G1\",\"name\":\"가동\"},"
+            + "\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[["
+            + "[126.976888842748,37.575650779448],[126.986888842748,37.575650779448],"
+            + "[126.986888842748,37.585650779448],[126.976888842748,37.585650779448],"
+            + "[126.976888842748,37.575650779448]]]}}]}");
+    MapIndex index = new MapIndex("v", Map.of("A", 100L), Map.of("G1", 100L));
+    Path out = dir.resolve("index.geojson");
+
+    IndexGeoJson.write(out, src, index);
+
+    JsonNode root = MAPPER.readTree(Files.readString(out));
+    assertRoundedToSixDecimals(root.get("features").get(0).get("geometry").get("coordinates"));
+  }
+
+  private static void assertRoundedToSixDecimals(JsonNode coords) {
+    if (coords.get(0).isNumber()) {
+      for (JsonNode v : coords) {
+        double c = v.asDouble();
+        assertThat(Math.abs(c - Math.round(c * 1e6) / 1e6))
+            .as("좌표는 소수 6자리로 반올림돼야 한다: " + c)
+            .isLessThan(1e-9);
+      }
+    } else {
+      for (JsonNode c : coords) {
+        assertRoundedToSixDecimals(c);
+      }
+    }
+  }
+
   /** 각 변에 점 20개씩 깔린 사각형(=직선 위 중복점). 단순화되면 모서리만 남는다. */
   private static String denseSquareDong() {
     double[][] corners = {{0, 0}, {0.01, 0}, {0.01, 0.01}, {0, 0.01}};

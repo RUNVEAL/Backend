@@ -67,35 +67,42 @@ public final class IndexGeoJson {
 
   private static ArrayNode simplifyRing(ArrayNode ring) {
     int n = ring.size();
-    if (n <= MIN_RING_POINTS) {
-      return ring;
-    }
     double[][] pts = new double[n][2];
     for (int i = 0; i < n; i++) {
       pts[i][0] = ring.get(i).get(0).asDouble();
       pts[i][1] = ring.get(i).get(1).asDouble();
     }
     boolean[] keep = new boolean[n];
-    keep[0] = true;
-    keep[n - 1] = true;
-    douglasPeucker(pts, 0, n - 1, keep);
-
-    int kept = 0;
-    for (boolean b : keep) {
-      if (b) {
-        kept++;
+    if (n <= MIN_RING_POINTS) {
+      java.util.Arrays.fill(keep, true);
+    } else {
+      keep[0] = true;
+      keep[n - 1] = true;
+      douglasPeucker(pts, 0, n - 1, keep);
+      int kept = 0;
+      for (boolean b : keep) {
+        if (b) {
+          kept++;
+        }
       }
-    }
-    if (kept < MIN_RING_POINTS) {
-      return ring; // 너무 줄면 원본 유지 (유효 폴리곤 보장)
+      if (kept < MIN_RING_POINTS) {
+        java.util.Arrays.fill(keep, true); // 너무 줄면 원본 점 유지 (유효 폴리곤 보장)
+      }
     }
     ArrayNode out = MAPPER.createArrayNode();
     for (int i = 0; i < n; i++) {
       if (keep[i]) {
-        out.add(ring.get(i));
+        ArrayNode point = MAPPER.createArrayNode();
+        point.add(round6(pts[i][0])); // 좌표를 6자리(~0.1m)로 — 과한 정밀도 제거, 모양 변화 없음
+        point.add(round6(pts[i][1]));
+        out.add(point);
       }
     }
     return out;
+  }
+
+  private static double round6(double v) {
+    return Math.round(v * 1e6) / 1e6;
   }
 
   private static void douglasPeucker(double[][] pts, int lo, int hi, boolean[] keep) {
