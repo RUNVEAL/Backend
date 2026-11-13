@@ -8,8 +8,12 @@ import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 class IndexGeoJsonTest {
+
+  private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
   @Test
   void injectsDongTotalLengthIntoBoundaryFeatures(@TempDir Path dir) throws IOException {
@@ -22,5 +26,67 @@ class IndexGeoJsonTest {
     assertThat(json).contains("\"lengthM\":123").contains("\"lengthM\":457"); // 동 A·B 총 길이
     assertThat(json).contains("\"Polygon\""); // 경계 geometry 보존
     assertThat(json).contains("\"code\":\"A\"").contains("\"code\":\"B\"");
+  }
+
+  @Test
+  void simplifiesDenseBoundaries(@TempDir Path dir) throws IOException {
+    Path src = dir.resolve("dong.geojson");
+    Files.writeString(src, denseSquareDong()); // 변 위에 촘촘한 점이 깔린 사각형 경계
+    MapIndex index = new MapIndex("v", Map.of("A", 100L), Map.of("G1", 100L));
+    Path out = dir.resolve("index.geojson");
+
+    IndexGeoJson.write(out, src, index);
+
+    int before = pointCount(src);
+    int after = pointCount(out);
+    assertThat(after).as("직선 위 점이 제거돼 좌표가 크게 줄어야 한다").isLessThan(before / 2);
+    assertThat(after).as("사각형 모서리는 남아야 한다(유효 폴리곤)").isGreaterThanOrEqualTo(4);
+    assertThat(Files.readString(out)).contains("\"lengthM\":100"); // 길이 정보는 유지
+  }
+
+  /** 각 변에 점 20개씩 깔린 사각형(=직선 위 중복점). 단순화되면 모서리만 남는다. */
+  private static String denseSquareDong() {
+    double[][] corners = {{0, 0}, {0.01, 0}, {0.01, 0.01}, {0, 0.01}};
+    StringBuilder ring = new StringBuilder("[");
+    for (int c = 0; c < 4; c++) {
+      double[] a = corners[c];
+      double[] b = corners[(c + 1) % 4];
+      for (int i = 0; i < 20; i++) {
+        double t = i / 20.0;
+        if (c > 0 || i > 0) {
+          ring.append(',');
+        }
+        ring.append('[')
+            .append(a[0] + (b[0] - a[0]) * t)
+            .append(',')
+            .append(a[1] + (b[1] - a[1]) * t)
+            .append(']');
+      }
+    }
+    ring.append(",[0,0]]"); // 닫기
+    return "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\","
+        + "\"properties\":{\"code\":\"A\",\"gu\":\"G1\",\"name\":\"가동\"},"
+        + "\"geometry\":{\"type\":\"Polygon\",\"coordinates\":["
+        + ring
+        + "]}}]}";
+  }
+
+  private static int pointCount(Path geojson) throws IOException {
+    JsonNode root = MAPPER.readTree(Files.readString(geojson));
+    int[] n = {0};
+    for (JsonNode f : root.get("features")) {
+      count(f.get("geometry").get("coordinates"), n);
+    }
+    return n[0];
+  }
+
+  private static void count(JsonNode coords, int[] n) {
+    if (coords.get(0).isNumber()) {
+      n[0]++;
+    } else {
+      for (JsonNode c : coords) {
+        count(c, n);
+      }
+    }
   }
 }
