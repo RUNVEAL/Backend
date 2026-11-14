@@ -50,6 +50,11 @@ dependencies {
 	// 운영 (모니터링)
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+	// 지도 · 경로 엔진 (라이브러리로 내장)
+	implementation 'com.graphhopper:graphhopper-core:11.1'
+	// 맵매칭: GPS 트랙을 그래프에 스냅 (core와 동일 버전)
+	implementation 'com.graphhopper:graphhopper-map-matching:11.1'
+
 	// Lombok
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
@@ -69,6 +74,16 @@ dependencies {
 	testAnnotationProcessor 'org.projectlombok:lombok'
 }
 
+// /api/v1/meta 의 build 값 (BuildProperties)
+springBoot {
+	buildInfo()
+}
+
+// 배포 스크립트가 build/libs/app.jar 를 올린다 (deploy/release.sh)
+tasks.named('bootJar') {
+	archiveFileName = 'app.jar'
+}
+
 tasks.named('test') {
 	useJUnitPlatform()
 }
@@ -76,4 +91,19 @@ tasks.named('test') {
 // 로컬 개발 실행(bootRun)은 local 프로파일을 자동 활성화 → application-local.yml 사용
 tasks.named('bootRun') {
 	systemProperty 'spring.profiles.active', 'local'
+}
+
+// 오프라인 파이프라인: OSM 그래프 → segments.bin. 기본값은 서교동 fixture(PoC). 대상은 -PosmFile 등으로 지정.
+tasks.register('generateSegments', JavaExec) {
+	group = 'map'
+	description = 'OSM 그래프에서 segments.bin 생성'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.runmap.api.map.pipeline.SegmentGenerator'
+	maxHeapSize = findProperty('heap') ?: '4g' // 전국이면 -Pheap=16g 등으로 상향
+	systemProperty 'runveal.map.version', findProperty('mapVersion') ?: 'dev'
+	systemProperty 'runveal.map.osm-file', findProperty('osmFile') ?: 'src/test/resources/fixtures/seogyo.osm.pbf'
+	systemProperty 'runveal.map.graph-location', findProperty('graphLocation') ?: 'build/segments-graph'
+	systemProperty 'runveal.map.srtm-dir', findProperty('srtmDir') ?: 'src/test/resources/fixtures/srtm'
+	systemProperty 'runveal.map.areas-dir', findProperty('areasDir') ?: 'src/test/resources/fixtures/areas'
+	systemProperty 'runveal.map.admin-dir', findProperty('adminDir') ?: 'src/test/resources/fixtures/admin'
 }

@@ -1,0 +1,20 @@
+# log 지시어가 없으면 접속 로그를 남기지 않는다 (위치 요청과 IP·시각이 짝지어지지 않게).
+# 앞단 프록시를 신뢰하지 않으므로 들어온 X-Forwarded-For 는 실제 클라이언트 IP로 덮어쓴다.
+# Caddy 가 직접 만든 5xx(예: 배포 중 502)는 http.log.error 로 IP·경로·시각을 남긴다 → 통째로 끈다
+{
+	log default {
+		exclude http.log.error
+	}
+}
+
+{$SITE_ADDRESS} {
+	encode gzip
+	@internal path /livez /readyz /actuator /actuator/*
+	respond @internal 404
+	handle_path /maps/* {
+		root * /srv/public-maps
+		header Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+	reverse_proxy api:8080
+}

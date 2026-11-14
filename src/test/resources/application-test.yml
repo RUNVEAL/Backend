@@ -9,3 +9,14 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+
+runveal:
+  rate-limit:
+    enabled: false # 테스트끼리 같은 IP라 한도에 걸린다. RateLimitTest만 켠다
+  map:
+    version: "2026-10-27"
+    osm-file: src/test/resources/fixtures/seogyo.osm.pbf
+    graph-location: ${java.io.tmpdir}/runveal-gh-${random.uuid} # 실행마다 새로 import (EV 바뀌어도 안전)
+    srtm-dir: src/test/resources/fixtures/srtm
+    areas-dir: src/test/resources/fixtures/areas
+    admin-dir: src/test/resources/fixtures/admin

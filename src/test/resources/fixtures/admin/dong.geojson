@@ -1,0 +1,6 @@
+{"type":"FeatureCollection","features":[
+{"type":"Feature","properties":{"kind":"dong","code":"A","gu":"G1","name":"가동"},
+ "geometry":{"type":"Polygon","coordinates":[[[126.890,37.530],[126.918,37.530],[126.918,37.570],[126.890,37.570],[126.890,37.530]]]}},
+{"type":"Feature","properties":{"kind":"dong","code":"B","gu":"G1","name":"나동"},
+ "geometry":{"type":"Polygon","coordinates":[[[126.918,37.530],[126.945,37.530],[126.945,37.570],[126.918,37.570],[126.918,37.530]]]}}
+]}

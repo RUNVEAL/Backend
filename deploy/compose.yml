@@ -1,0 +1,70 @@
+# RUNVEAL 운영 스택. VM의 /srv/runveal 에 이 파일·Caddyfile·.env 를 두고 실행한다 (deploy/README.md).
+# jar 와 지도는 이미지에 굽지 않고 링크(app.jar · maps/current)로 바꿔 끼운다.
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment: { SITE_ADDRESS: "${SITE_ADDRESS}" }
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./public-maps:/srv/public-maps:ro
+      - caddy_data:/data
+    depends_on: { api: { condition: service_healthy } }
+    logging: *logging
+
+  api:
+    image: eclipse-temurin:21-jre
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 5g
+    # 힙 덤프 금지 (좌표가 메모리에 있다). OOM 이면 죽고 restart 로 다시 뜬다
+    entrypoint: ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError",
+                 "-XX:-HeapDumpOnOutOfMemoryError", "-jar", "/app/app.jar"]
+    environment:
+      RUNVEAL_MAP_VERSION: "${MAP_VERSION}"
+      RUNVEAL_MAP_OSM_FILE: /maps/NO_IMPORT_IN_PROD.osm.pbf # 그래프가 없으면 import 하지 말고 기동 실패
+      RUNVEAL_MAP_GRAPH_LOCATION: /maps/graph
+      RUNVEAL_MAP_SRTM_DIR: /maps/srtm
+      RUNVEAL_MAP_AREAS_DIR: /maps/areas
+      RUNVEAL_MAP_ADMIN_DIR: /maps/admin
+      RUNVEAL_RATE_LIMIT_ENABLED: "${RATE_LIMIT_ENABLED:-true}"
+      DB_URL: jdbc:postgresql://postgres:5432/runveal
+      DB_USERNAME: runveal
+      DB_PASSWORD: "${POSTGRES_PASSWORD}"
+    volumes:
+      - ./app.jar:/app/app.jar:ro
+      # GraphHopper 가 그래프를 읽을 때 graph/gh.lock 을 만든다 → 쓰기 가능. 파일은 root 소유라 graph/ 폴더만 쓸 수 있다
+      - ./maps/current:/maps
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    depends_on: { postgres: { condition: service_healthy } }
+    logging: *logging
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    mem_limit: 1g
+    environment:
+      POSTGRES_DB: runveal
+      POSTGRES_USER: runveal
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U runveal -d runveal"]
+      interval: 5s
+      retries: 20
+    logging: *logging
+
+volumes: { caddy_data: {}, pgdata: {} }

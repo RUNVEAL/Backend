@@ -81,13 +81,19 @@ com.runmap.api
 ## 에러 코드
 - `global/error/ErrorCode` enum 한 곳에서 `{HttpStatus, code, message}` 관리
 - code = 도메인 접두어(영문 1~2자) + 3자리 (`C` 공통, `A` 인증, `U` 사용자, `CO` 코스 …)
+- 예외: 지도 API(`/routes` · `/match` · `/meta`)는 API 명세 §2.8의 문자열 코드(`INVALID_REQUEST`, `SERVER_BUSY` …)를 쓴다. 앱의 화면 분기 표가 이 값 기준이다
+- 400은 `BusinessException.invalid(field, reason)` — 첫 위반 1건만, `reason`은 명세 §2.8 목록
 - 배포된 code 값의 의미는 바꾸지 않음 (앱이 분기에 씀 = API 계약)
+- 에러 `message`·로그에 입력값(좌표 등)을 넣지 않는다. 예외는 클래스 이름만 로그에 남긴다
 
 ## 브랜치 전략
 - `main`: 운영 배포 기준 / `develop`: 기본·통합 브랜치
 - 작업은 `develop`에서 `feature/*`·`fix/*` 분기 → PR 리뷰 후 develop 병합
 - `hotfix/*`는 `main`에서 분기 → `main`·`develop` 양쪽 반영
 - `main`·`develop` 직접 push 금지 (PR + 리뷰)
+
+## 배포
+- 운영 서버(Azure 서울 VM + Docker Compose)·지도 교체·롤백은 **[deploy/README.md](deploy/README.md)**. 위치 API 프라이버시 규칙(접속 로그 없음·힙 덤프 금지)도 거기 있다
 
 ## 비밀값
 - OAuth 키·JWT 시크릿·DB 비밀번호 등은 **커밋 금지.** `application-local.yml` 또는 환경변수로 주입

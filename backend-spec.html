@@ -1,0 +1,1309 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RUNVEAL 백엔드 설계</title>
+<style>
+:root{
+  --bg:#f7f7f5; --surface:#ffffff; --surface-2:#f0f0ec; --text:#1c1c1a; --muted:#6b6b66; --line:#dcdcd6;
+  --a:#0f8a7e; --a-soft:#e3f4f1; --b:#6a4fd6; --b-soft:#eeeafd;
+  --p0:#b42318; --p0-soft:#fdecea; --p1:#b4541a; --p1-soft:#fbede3; --p2:#6b6b66; --p2-soft:#ececE7;
+  --radius:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121211; --surface:#1b1b1a; --surface-2:#232321; --text:#ecece8; --muted:#a2a29b; --line:#33332f;
+    --a:#4cc3b5; --a-soft:#163431; --b:#a593f5; --b-soft:#272140;
+    --p0:#f2867c; --p0-soft:#3b1a17; --p1:#f0a06a; --p1-soft:#3a2617; --p2:#a2a29b; --p2-soft:#2a2a27;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121211; --surface:#1b1b1a; --surface-2:#232321; --text:#ecece8; --muted:#a2a29b; --line:#33332f;
+  --a:#4cc3b5; --a-soft:#163431; --b:#a593f5; --b-soft:#272140;
+  --p0:#f2867c; --p0-soft:#3b1a17; --p1:#f0a06a; --p1-soft:#3a2617; --p2:#a2a29b; --p2-soft:#2a2a27;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:64px}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.7 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;word-break:keep-all}
+.wrap{max-width:980px;margin:0 auto;padding:0 16px}
+nav.top{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+nav.top .wrap{display:flex;gap:18px;align-items:center;height:52px;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+nav.top b{font-size:14px;margin-right:6px}
+nav.top a{font-size:13px;color:var(--muted);text-decoration:none}
+nav.top a:hover{color:var(--text)}
+#theme{margin-left:auto;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;font-size:12px;padding:4px 10px;cursor:pointer}
+header.hero{padding:52px 0 24px}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+header h1{font-size:32px;line-height:1.3;margin:8px 0 10px;letter-spacing:-.02em}
+.lead{color:var(--muted);margin:0;max-width:680px}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+section{padding:32px 0;border-top:1px solid var(--line)}
+h2{font-size:22px;margin:0 0 16px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h3{font-size:15px;margin:26px 0 10px;color:var(--muted);font-weight:700}
+h3:first-of-type{margin-top:0}
+p,ul{margin:10px 0}
+ul{padding-left:20px}
+li{margin:4px 0}
+strong{font-weight:700}
+code{font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--surface-2);padding:1px 6px;border-radius:6px}
+pre.flow{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:10px 0}
+pre.flow code{background:none;padding:0;font-size:13px;line-height:1.75;white-space:pre}
+.tbl{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow-x:auto;margin:10px 0}
+table{width:100%;min-width:560px;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--surface-2);font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td:first-child{white-space:nowrap}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px}
+.pa{background:var(--a-soft);color:var(--a)} .pb{background:var(--b-soft);color:var(--b)}
+.pr{display:inline-block;font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;letter-spacing:.02em}
+.P0{background:var(--p0-soft);color:var(--p0)} .P1{background:var(--p1-soft);color:var(--p1)} .P2{background:var(--p2-soft);color:var(--p2)}
+footer{padding:28px 0 60px;color:var(--muted);font-size:13px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<nav class="top"><div class="wrap"><b>RUNVEAL BE</b><a href="#0-한-장-요약">한 장 요약</a><a href="#1-전체-구조">전체 구조</a><a href="#2-화면--데이터-v03-기준">화면 ↔︎ 데이터</a><a href="#3-맵매칭--post-apiv1match-a">맵매칭</a><a href="#4-코스-추천--post-apiv1routes-b">코스 추천</a><a href="#5-지도-데이터-a">지도 데이터</a><a href="#6-앱-로컬-처리-앱-팀-전달">앱 로컬 처리</a><a href="#7-서버-공통-b">서버 공통</a><a href="#8-프라이버시--스토어-심사-b">프라이버시 · 스토어 심사</a><a href="#9-역할-분담-제안">역할 분담</a><a href="#10-앱-로컬-데이터-참고">앱 로컬 데이터</a><a href="#11-디자인-변경-요청-요약">디자인 변경 요청</a><a href="#12-미결정-사항">미결정 사항</a><button id="theme" type="button" aria-label="테마 전환">테마</button></div></nav>
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">Backend Design · v0.3 반영</div>
+  <h1>RUNVEAL 백엔드 설계</h1>
+  <p class="lead">사용자 데이터는 폰에, 서버는 계산만 하고 잊는다. 화면 약 40개 중 서버를 부르는 곳은 4곳, API는 2개.</p>
+  <div class="legend"><span class="pill pa">A · 지도 데이터 · 정복 판정</span><span class="pill pb">B · 추천 · 서빙 · 프라이버시</span><span class="pr P0">P0 필수</span><span class="pr P1">P1 곧</span><span class="pr P2">P2 나중</span></div>
+</header>
+<blockquote>
+<p>개정 2026-11-06 · 기준: Figma 「RUNVEAL 화면설계서 v0.3」(26.11.02) ·
+결정: <a href="decisions-v0.3.html">decisions-v0.3.md</a> (D1~D16) 함께 볼
+것: <a href="api-spec-v2.html">API 명세</a> · <a
+href="figma-wireframe/index.html">화면설계서 정리본</a> · <a
+href="figma-wireframe/design-change-requests.html">디자인 변경
+요청서</a></p>
+</blockquote>
+
+<section><h2 id="0-한-장-요약">0. 한 장 요약</h2>
+<ul>
+<li><strong>사용자 데이터는 폰에, 서버는 계산만 하고 잊는다.</strong>
+로그인 없음 · 서버 DB 없음 · 외부 API 없음</li>
+<li>서버 API는 <strong>2개</strong>: <code>POST /match</code> (달린 길
+판정) · <code>POST /routes</code> (코스 추천) + 운영용
+<code>GET /meta</code> · 헬스체크</li>
+<li>화면 약 40개 중 <strong>서버를 부르는 화면은 4곳</strong>:
+B0→B1(추천), C0→D1(러닝 종료), A4-3(기록 불러오기), 지도 버전 교체 시
+재계산</li>
+<li>나머지(홈 지도 · 탐험률 · 내 코스 · 기록 · MY)는 <strong>앱 로컬 +
+지도 파일(CDN)</strong></li>
+<li>역할: <strong>A = 지도 데이터 · 정복 판정</strong>, <strong>B = 추천
+· 서빙 · 프라이버시</strong></li>
+</ul>
+<h3 id="01-v03-반영으로-바뀐-점">0.1 v0.3 반영으로 바뀐 점</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>영역</th>
+<th>이전</th>
+<th>지금</th>
+<th>결정</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>로그인 · 계정</td>
+<td>미정 / 디자인은 카카오·구글</td>
+<td><strong>1차 없음</strong> · 동의는 기기 저장 · MY = 데이터 초기화 ·
+내보내기/가져오기</td>
+<td>D1~D4</td>
+</tr>
+<tr>
+<td>장소</td>
+<td>위치 이름 조회(카카오)</td>
+<td><strong>지도 탭 선택</strong> · 라벨은 동 이름</td>
+<td>D5</td>
+</tr>
+<tr>
+<td>탐험률</td>
+<td>미정</td>
+<td><strong>우리 동네 = 행정동 1개 · 누적 전체</strong></td>
+<td>D6</td>
+</tr>
+<tr>
+<td>지도 파일</td>
+<td>구 단위 팩</td>
+<td>구 단위 팩 + <strong>서울 인덱스</strong>(줌 아웃 · 인접 구)</td>
+<td>D7</td>
+</tr>
+<tr>
+<td><code>/routes</code></td>
+<td>기본 응답</td>
+<td><strong>편도 ±10% · 멀면 빈 배열 + 경고 · <code>milestones</code> ·
+고도 ≤100m 간격</strong></td>
+<td>D8~D10</td>
+</tr>
+<tr>
+<td>필터</td>
+<td>4종</td>
+<td><strong>공원 · 하천 · 완만한 길</strong> (신호 1차 제외)</td>
+<td>D11</td>
+</tr>
+<tr>
+<td>러닝 중</td>
+<td>미정</td>
+<td><strong>코스 라인 + 이탈 경고</strong> · 색칠은 앱 로컬</td>
+<td>D12</td>
+</tr>
+<tr>
+<td>결과 화면</td>
+<td>즉시</td>
+<td><strong>"분석 중" 상태</strong> 추가</td>
+<td>D14</td>
+</tr>
+<tr>
+<td>불러오기</td>
+<td>미정</td>
+<td><strong>Health Connect · HealthKit · GPX</strong> → 1건씩
+<code>/match</code></td>
+<td>D15</td>
+</tr>
+</tbody>
+</table></div>
+
+</section>
+<section><h2 id="1-전체-구조">1. 전체 구조</h2>
+<h3 id="11-구성-요소">1.1 구성 요소</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>구성</th>
+<th>역할</th>
+<th>저장</th>
+<th>담당</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>앱</td>
+<td>기록 저장 · 정복률 · 화면 · GPS 필터 · 로컬 판정</td>
+<td>사용자 데이터 전부 (로컬 SQLite)</td>
+<td>앱 팀</td>
+</tr>
+<tr>
+<td>지도 파이프라인</td>
+<td>OSM → 길 조각 · 번호 → 지도 파일</td>
+<td>지도 파일 (공공 데이터)</td>
+<td>A</td>
+</tr>
+<tr>
+<td>API 서버</td>
+<td><code>/match</code> · <code>/routes</code> 계산</td>
+<td><strong>없음</strong></td>
+<td>A (판정) · B (추천 · 서버)</td>
+</tr>
+<tr>
+<td>CDN</td>
+<td>지도 팩 · 서울 인덱스 · 설정 배포</td>
+<td>정적 파일</td>
+<td>B (업로드)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="12-설계-원칙-위치정보-사업-미신고-전제">1.2 설계 원칙 (위치정보
+사업 미신고 전제)</h3>
+<ul>
+<li><strong>서버 무저장</strong>: DB · 파일 · 큐 · 캐시에 위치 미저장 ·
+요청 처리 후 즉시 폐기</li>
+<li><strong>무식별</strong>: 로그인 · 토큰 · 기기 ID · 광고 ID 없음</li>
+<li><strong>좌표 무로그</strong>: 요청 본문 · 예외 메시지 · 에러 추적 ·
+힙 덤프에서 제외</li>
+<li><strong>제3자 미제공</strong>: 외부 API로 좌표 전송 없음</li>
+<li><strong>경로 익명화</strong>: 앱이 시작 · 끝 300~800m
+<strong>무작위</strong> 절단 + 시각 제거 후 전송</li>
+</ul>
+<h3 id="13-배포-형태">1.3 배포 형태</h3>
+<pre class="flow"><code>[앱] ──HTTPS──▶ [리버스 프록시 (TLS · 본문 미기록)] ──▶ [runveal-api 컨테이너 1개]
+                                                          └ 이미지 = 서버 코드 + 지도 파일(현재 · 직전)
+[앱] ──HTTPS──▶ [CDN] ◀── [S3 (지도 팩 · 서울 인덱스 · config.json)]</code></pre>
+<ul>
+<li>서버 1대 (2 vCPU · 4GB) · 상태 없음 → 늘릴 땐 같은 컨테이너
+복제</li>
+<li><strong>없는 것</strong>: DB · Redis · 큐 · 워커 · 외부 API · 비밀
+키 · 회원 시스템</li>
+</ul>
+<h3 id="14-서버-내부-구조">1.4 서버 내부 구조</h3>
+<pre class="flow"><code>runveal-api (Spring Boot)
+┌──────────────────────────────────────────────────────────────┐
+│ ① 진입      실제 클라이언트 IP 추출                         B │
+│ ② 보호      IP rate limit → 동시 실행 상한                  B │
+│ ③ API       입력 검증 · 지도 버전 선택 · 에러 변환           B │
+│ ④ 엔진      MatchEngine (A)      │  RouteEngine (B)          │
+│ ⑤ 지도      MapData × 2 (현재 · 직전)                         │
+│             GraphHopper 그래프 (B) · 길 번호 매핑 (A)          │
+└──────────────────────────────────────────────────────────────┘
+  전부 읽기 전용 · 요청 끝나면 아무것도 남지 않음</code></pre>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>계층</th>
+<th>하는 일</th>
+<th>담당</th>
+<th>상태</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>진입 · 보호</td>
+<td>실제 IP · rate limit · 동시 실행 상한</td>
+<td>B</td>
+<td>IP 카운터만 메모리</td>
+</tr>
+<tr>
+<td>API</td>
+<td>검증 · 버전 선택 · 엔진 예외 → HTTP 에러</td>
+<td>B</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>엔진</td>
+<td>맵매칭(판정) · 코스 추천</td>
+<td>A · B</td>
+<td>없음 (스레드 안전)</td>
+</tr>
+<tr>
+<td>지도</td>
+<td>지도 파일 로드 · 그래프 · 길 번호 매핑</td>
+<td>B(로드) · A(매핑)</td>
+<td>읽기 전용</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="15-요청-처리-순서">1.5 요청 처리 순서</h3>
+<pre class="flow"><code>요청
+  ▼ 실제 IP 추출
+  ▼ IP rate limit                  (초과 → 429)
+  ▼ 입력 검증                      (실패 → 400 · 413)
+  ▼ mapVersion → 지도 선택          (현재 · 직전 외 → 409)
+  ▼ 동시 실행 자리 확보             (2초 대기 후 없음 → 503)
+  ▼ 엔진 호출 (match | recommend)
+  ▼ 엔진 예외 → 에러 코드 변환      (메시지에 좌표 없음)
+  ▼ 응답 · 입력 폐기</code></pre>
+<h3 id="16-기동-순서">1.6 기동 순서</h3>
+<pre class="flow"><code>① 이미지 안 지도 파일 2개(현재 · 직전) 로드
+② 해시 검증 (파일 · GraphHopper 설정)     (불일치 → 기동 거부)
+③ 그래프 메모리 적재
+④ 워밍업 매칭 1건
+⑤ ready = 200 → 트래픽 수신</code></pre>
+<h3 id="17-코드-구조-모듈">1.7 코드 구조 (모듈)</h3>
+<pre class="flow"><code>runveal-backend/
+├ contracts/   엔진 호출 모양 (입력 · 출력)            A · B 공동
+├ core/        지도 로드 · GraphHopper 설정              B
+├ match/       맵매칭 엔진                               A
+├ route/       코스 추천 엔진                            B
+├ api/         Spring Boot · 보호 · 검증 · 에러          B
+├ pipeline/    지도 파이프라인 (Java + Python)           A
+└ infra/       Dockerfile · CI · 배포                    B</code></pre>
+<ul>
+<li><code>match</code> ↔︎ <code>route</code> 서로 참조 안 함 · Spring은
+<code>api</code>만 앎</li>
+<li>둘이 맞출 것 = <code>contracts</code> (엔진 호출 모양) + 지도 파일
+형식</li>
+</ul>
+
+</section>
+<section><h2 id="2-화면--데이터-v03-기준">2. 화면 ↔︎ 데이터 (v0.3 기준)</h2>
+<h3 id="21-화면별-데이터-출처">2.1 화면별 데이터 출처</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>영역</th>
+<th>화면</th>
+<th>데이터</th>
+<th>출처</th>
+<th>서버 호출</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>진입</td>
+<td>L1 온보딩 · L2 약관 · L2-1 상세</td>
+<td>약관 본문 · 동의 버전·시각</td>
+<td>앱 내장/CDN · <strong>기기 저장</strong></td>
+<td>없음</td>
+</tr>
+<tr>
+<td>권한</td>
+<td>A1 · A1-1</td>
+<td>OS 위치 권한 · 위치 서비스 상태</td>
+<td>OS</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>홈</td>
+<td>A2 첫 코스 유도</td>
+<td>탐험 0% 여부</td>
+<td>로컬 <code>explored_segments</code></td>
+<td>없음</td>
+</tr>
+<tr>
+<td>홈</td>
+<td>A3-1 동 · A3-4 줌 인</td>
+<td>동 경계 · 달린 길 · 안 가본 길 · 탐험률</td>
+<td>구 팩 + 로컬</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>홈</td>
+<td>A3-3 줌 아웃 (구)</td>
+<td>서울 각 구 %</td>
+<td><strong>서울 인덱스</strong> + 로컬</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>홈</td>
+<td>A3-2 권한 미허용</td>
+<td>기록 있으면 탐험률 표시</td>
+<td>로컬</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>불러오기</td>
+<td>A4-1 ~ A4-6</td>
+<td>외부 기록 → 달린 길</td>
+<td>Health Connect · HealthKit · GPX → <strong><code>/match</code>
+(IMPORT)</strong></td>
+<td><strong>있음</strong></td>
+</tr>
+<tr>
+<td>코스</td>
+<td>B0 코스 만들기</td>
+<td>출발(현위치·지도 탭) · 도착(지도 탭) · 거리 · 필터 · 달린 길</td>
+<td>앱</td>
+<td>—</td>
+</tr>
+<tr>
+<td>코스</td>
+<td>B1 추천 목록 · B1-1 없음</td>
+<td>코스 최대 3개 · 경고</td>
+<td><strong><code>/routes</code></strong></td>
+<td><strong>있음</strong></td>
+</tr>
+<tr>
+<td>코스</td>
+<td>B2 코스 상세</td>
+<td>경로 · 고도 · 경로 정보(milestones)</td>
+<td><code>/routes</code> 응답 (저장 시 로컬)</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>코스</td>
+<td>B3 내 코스 · B3-1</td>
+<td>저장 코스 · 정렬 · 이름</td>
+<td>로컬 <code>saved_courses</code></td>
+<td>없음</td>
+</tr>
+<tr>
+<td>러닝</td>
+<td>C0 러닝 중</td>
+<td>코스 라인 · 이탈 경고 · 실시간 색칠 · 새 길 +km</td>
+<td>로컬 GPS + 지도 팩 (로컬 판정)</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>러닝</td>
+<td>C0-1 · C0-2</td>
+<td>일시정지 · 종료 확인</td>
+<td>앱</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>기록</td>
+<td>D1 러닝 결과</td>
+<td>거리·시간·페이스 즉시 · 새 길 · 탐험률 before→after</td>
+<td>로컬 + <strong><code>/match</code> (LIVE)</strong></td>
+<td><strong>있음</strong></td>
+</tr>
+<tr>
+<td>기록</td>
+<td>D2 상세 · D0 목록</td>
+<td>구간 기록 · 고도 · 메뉴(이름 · GPX · 삭제)</td>
+<td>로컬</td>
+<td>없음</td>
+</tr>
+<tr>
+<td>공통</td>
+<td>Z0 로딩 · Z1 에러</td>
+<td>10초 타임아웃 · 서버 오류</td>
+<td>앱</td>
+<td>—</td>
+</tr>
+<tr>
+<td>MY</td>
+<td>E0 · E1-1 · E2 · E2-1</td>
+<td>표시명 · 약관 · 내보내기/가져오기 · 데이터 초기화</td>
+<td>로컬</td>
+<td>없음</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="22-서버-호출-지점">2.2 서버 호출 지점</h3>
+<pre class="flow"><code>B0 코스 만들기 ──[추천]──▶ POST /routes ──▶ B1 (1~3개) / B1-1 (0개 · 도착지가 멂)
+C0 종료 ──▶ D1 (거리·시간·페이스 즉시 · &quot;분석 중&quot;)
+            └─▶ POST /match (LIVE) ──▶ 새 길 · 탐험률 before→after 갱신
+A4-3 불러오는 중 ──▶ 기록마다 POST /match (IMPORT · 한 번에 1건)
+지도 버전 교체 (OSM 스냅샷 변경 시만) ──▶ 기록마다 POST /match (REMATCH · 천천히)</code></pre>
+
+</section>
+<section><h2 id="3-맵매칭--post-apiv1match-a">3. 맵매칭 —
+<code>POST /api/v1/match</code> <span class="pill pa">A</span></h2>
+<h3 id="31-입출력">3.1 입출력</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>구분</th>
+<th>필드</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>입력</td>
+<td><code>mapVersion</code> · <code>purpose</code>(LIVE · IMPORT ·
+REMATCH) · <code>points</code> <code>[[lng, lat]]</code></td>
+<td>점 10~2,000개 · 앱이 익명화한 사본</td>
+</tr>
+<tr>
+<td>출력</td>
+<td><code>segmentIds</code> · <code>matchedPath</code> ·
+<code>matchedDistanceM</code> · <code>sigunguCodes</code></td>
+<td>길 번호 = 지도 파일과 동일 체계</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="32-앱이-보내기-전에-d13">3.2 앱이 보내기 전에 (D13)</h3>
+<pre class="flow"><code>[원본 GPS (폰에만 저장)]
+  ▼ 오차 30m 초과 점 제외 (거리 계산에서도 제외)
+  ▼ 100m 또는 1분 미만 → 저장 안 함 · 전송 안 함 (&quot;기록이 너무 짧아 저장되지 않아요&quot;)
+  ▼ 시작 · 끝 각각 300~800m 무작위 절단 (러닝마다 새로)
+  ▼ 시각 제거 · 10초 간격 다운샘플 · 튀는 점 제거
+  ▼ 남은 점 10개 미만 → /match 안 보냄 · 전 구간 앱 로컬 판정
+  ▼ POST /match</code></pre>
+<ul>
+<li>단계별 상세 규칙: <a href="api-spec-v2.html">API 명세 §3.1</a></li>
+</ul>
+<h3 id="33-서버-처리">3.3 서버 처리</h3>
+<pre class="flow"><code>① 지도 버전 확인                    (현재 · 직전 외 → 409)
+② 동시 실행 자리 확보                (없음 → 503 + Retry-After)
+   └ IMPORT · REMATCH는 서버 전체 동시 1건 (LIVE 우선)
+③ 그래프 범위 확인
+     ├─ 전부 밖 → 422 OUT_OF_SERVICE_AREA
+     └─ 일부 밖 → 범위 밖 점에서 끊어 조각별 매칭
+④ 맵매칭 (GraphHopper)
+⑤ 인정 규칙 적용                    (구간을 얼마나 지나갔는지 기준)
+⑥ 응답 · 입력 폐기</code></pre>
+<ul>
+<li>잘린 시작 · 끝 구간 + 러닝 중 실시간 색칠: <strong>앱이 지도 팩으로
+판정</strong> (도로선 15m 이내 · 구간 길이 60% 이상)</li>
+<li>같은 입력 = 같은 출력 → 재시도 안전</li>
+</ul>
+<h3 id="34-기능-요구사항">3.4 기능 요구사항</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>우선순위</th>
+<th>요구사항</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>맵매칭 + 인정 규칙 → 달린 길 번호 목록</td>
+<td></td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>범위 밖 점에서 끊어 조각별 매칭</td>
+<td>전부 밖일 때만 422</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>실제 러닝 GPS로 정확도 평가 → 인정 규칙 튜닝</td>
+<td><strong>잘리고 10초로 줄어든 입력 기준</strong></td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>앱 팀용 계산 설명서 + 정답 예시: GPS 필터 · 로컬 판정 · 정복률 ·
+다운샘플</td>
+<td>앱이 서버와 같은 결과</td>
+</tr>
+<tr>
+<td><span class="pr P1">P1</span></td>
+<td>지도 버전 교체 시 정확도 회귀 확인</td>
+<td>교체 게이트 (§7.3)</td>
+</tr>
+</tbody>
+</table></div>
+
+</section>
+<section><h2 id="4-코스-추천--post-apiv1routes-b">4. 코스 추천 —
+<code>POST /api/v1/routes</code> <span class="pill pb">B</span></h2>
+<h3 id="41-입출력">4.1 입출력</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>구분</th>
+<th>필드</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>입력</td>
+<td><code>mapVersion</code> · <code>start</code>(소수점 4자리) ·
+<code>end</code>(null = 순환 · 지도 탭) · <code>distanceM</code> ·
+<code>preferUnexplored</code> · <code>exploredSegmentIds</code> ·
+<code>filters</code> · <code>paceSecPerKm</code></td>
+<td>거리 1~21km · 500m 단위 · 기본 5km · 안 가본 길 기본 ON</td>
+</tr>
+<tr>
+<td>출력</td>
+<td><code>routes[0..3]</code> · <code>warnings</code></td>
+<td>경로 · 거리 · 시간 · 고도 · 고도 그래프 · 새 길 · 태그(최대 3) ·
+<strong>milestones</strong> · 길 번호</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><code>exploredSegmentIds</code>는 <strong>코스가 지날 수 있는
+범위만</strong> 전송 (순환 = 출발지 반경 거리 × 0.6 · 편도 =
+출발·도착까지 거리 합 ≤ 거리 × 1.1인 타원) · <strong>최대
+10,000개</strong> (초과 413 <code>TOO_MANY_SEGMENTS</code>)</li>
+<li>필터: <code>PARK</code>(공원) · <code>RIVERSIDE</code>(하천길) ·
+<code>GENTLE_SLOPE</code>(완만한 길) — 신호 필터 1차 제외 (D11)</li>
+</ul>
+<h3 id="42-처리">4.2 처리</h3>
+<pre class="flow"><code>① 지도 버전 확인 · 동시 실행 자리 확보
+② 요청 한 번짜리 가중치 생성                (달린 길에 벌점 · 저장 없음)
+③ 도착지 있으면 최단 거리 확인
+     └─ 최단 거리 &gt; 선택 거리 → 200 + routes: [] + DESTINATION_FARTHER_THAN_DISTANCE + shortestDistanceM (→ B1-1)
+④ 후보 코스 여러 개 생성
+     ├─ 순환 → 후보 k개 · 목표 ±15%
+     └─ 편도 → 우회 경로 · 목표 ±10%
+⑤ 목표 거리에 가까운 순 최대 3개
+     ├─ 0개   → 200 + 빈 배열 + NO_ROUTE_FOUND (→ B1-1)
+     └─ 1~3개 → 경로 · 고도(≤100m 간격) · milestones · 새 길 · 태그
+⑥ 응답 · 입력 폐기</code></pre>
+<ul>
+<li><strong>앱이 하는 것</strong>: B1 정렬(새 길 긴 순 → 요청 거리 근접
+→ 상승 고도 낮은 순) · 코스 이름(코스 A/B/C) · 저장(응답 1건
+통째로)</li>
+<li>앱 타임아웃 <strong>10초</strong> (Z0-1 → Z1-2) · 서버 마감 자리
+대기 2초 + 계산 7초 · 서버 p95 목표 2초</li>
+</ul>
+<h3 id="43-기능-요구사항">4.3 기능 요구사항</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>우선순위</th>
+<th>요구사항</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>순환 코스: 목표 거리 ±15%</td>
+<td>PoC 후보 5개 중 최선 → 100%</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>편도 코스: 목표 거리 ±10% · 도착지가 멀면 빈 배열 + 경고</td>
+<td>B1-1 연결 (D8)</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>안 가본 길 우선 (요청별 가중치)</td>
+<td>PoC 새 길 비율 86.6% → 94.0%</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>필터: 공원 · 하천 · 완만한 길</td>
+<td>D11</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>고도 그래프: 샘플 간격 ≤ 100m · 없으면 <code>null</code></td>
+<td>B2 경사 3색 · 그래프 숨김 (D10)</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>경로 정보 <code>milestones</code>: 도로 · 공원 · 하천 · 새 길 구간 +
+누적 거리</td>
+<td>이름은 OSM 태그 (D9)</td>
+</tr>
+<tr>
+<td><span class="pr P2">P2</span></td>
+<td>신호 · 횡단보도 필터 · 경유지 · 턴바이턴 안내</td>
+<td>2차</td>
+</tr>
+</tbody>
+</table></div>
+
+</section>
+<section><h2 id="5-지도-데이터-a">5. 지도 데이터 <span class="pill pa">A</span></h2>
+<h3 id="51-산출물">5.1 산출물</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>산출물</th>
+<th>내용</th>
+<th>사용처</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>서버용 번들</td>
+<td>그래프 · 길 번호 매핑 · 버전 정보(해시)</td>
+<td>API 서버</td>
+</tr>
+<tr>
+<td>구 단위 지도 팩</td>
+<td>동 경계 · 동별 총 길이 · 길 조각 선 · 길 번호</td>
+<td>홈 동 지도 · 정복률 · 로컬 판정</td>
+</tr>
+<tr>
+<td><strong>서울 인덱스</strong>
+(<code>/packs/{mapVersion}/index.*</code>)</td>
+<td>구 · 동 경계(단순화) · 구·동별 총 길이</td>
+<td>홈 줌 아웃(A3-3) · 인접 구의 동 % (D7)</td>
+</tr>
+<tr>
+<td>manifest · config</td>
+<td>구별 bbox · 파일 URL · 현재 버전 · 판정 기준값 · 절단 길이</td>
+<td>앱이 받을 파일 선택</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>앱은 <strong>서울 인덱스 + 우리 동네가 속한 구 팩</strong>을 받고,
+다른 구는 지도를 그 구로 옮길 때 받음</li>
+<li>구 · 동 탐험률 = 로컬 <code>explored_segments</code>의
+<code>lengthM</code> 합 ÷ 인덱스의 총 길이</li>
+</ul>
+<h3 id="52-처리">5.2 처리</h3>
+<pre class="flow"><code>[OSM 원본 (버전 고정)]
+  ▼ 그래프 생성 (GraphHopper import · 설정은 B 소유)
+  ▼ 달릴 수 있는 길 추출
+  ▼ 보행 회랑 병합 (나란한 보도 · 자전거도로 · 차도 → 한 길 · 분모 중복 9~27% 제거)
+  ▼ 길 번호 부여 = hash(대표 way, 시작 node, 끝 node)   (다시 만들어도 같은 번호)
+  ▼ 지도 파일 생성 (서버용 번들 · 구 팩 · 서울 인덱스)
+  ▼ 불변식 검사 (번호 누락 · 총 길이 합 · 버전 일치 → 실패 시 배포 중단)</code></pre>
+<h3 id="53-버전-정책">5.3 버전 정책</h3>
+<ul>
+<li>같은 버전 파일은 <strong>재작성 금지</strong> → 수정 = 새 버전</li>
+<li>같은 OSM 스냅샷이면 서비스 지역을 넓혀도 길 번호 불변 →
+<strong>재매칭 불필요</strong></li>
+<li>서버는 <strong>현재 · 직전</strong> 2개 버전 동시 탑재</li>
+</ul>
+<h3 id="54-기능-요구사항">5.4 기능 요구사항</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>우선순위</th>
+<th>요구사항</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>보행 회랑 병합 → 정복 대상 길 조각</td>
+<td></td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>결정론적 길 번호</td>
+<td>지역 확장 시 재매칭 0건</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>서버용 번들 + 구 팩 + 서울 인덱스 + manifest</td>
+<td>팩 형식 후보: FlatGeobuf</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>불변식 검사 통과 시에만 산출</td>
+<td></td>
+</tr>
+<tr>
+<td><span class="pr P1">P1</span></td>
+<td><code>milestones</code>용 이름 데이터 (도로명 · 공원 · 하천)
+그래프에 포함</td>
+<td>B의 <code>/routes</code>가 사용</td>
+</tr>
+</tbody>
+</table></div>
+
+</section>
+<section><h2 id="6-앱-로컬-처리-앱-팀-전달">6. 앱 로컬 처리 (앱 팀 전달)</h2>
+<p>서버가 저장하지 않으므로 아래는 <strong>앱이 직접 구현</strong>한다.
+백엔드는 규칙 설명서 + 정답 예시(입력 → 기대 출력)를 준다.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>기능</th>
+<th>규칙</th>
+<th>화면</th>
+<th>명세 주인</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPS 필터</td>
+<td>오차 30m 초과 점 제외 · 100m/1분 미만 저장 안 함</td>
+<td>C0 · C0-2</td>
+<td>A</td>
+</tr>
+<tr>
+<td>실시간 색칠 · 새 길 +km</td>
+<td>지도 팩 도로선 15m 이내 · 구간 60% 이상</td>
+<td>C0</td>
+<td>A</td>
+</tr>
+<tr>
+<td>이탈 경고</td>
+<td>코스 라인에서 50m · 30초 이상 벗어나면 (config
+<code>offRouteDistM</code> · <code>offRouteSec</code> · 실측 후
+조정)</td>
+<td>C0</td>
+<td>B</td>
+</tr>
+<tr>
+<td>서버 전송 전 처리</td>
+<td>무작위 절단 · 시각 제거 · 10초 다운샘플 · 이상치 제거 · 10점
+미만이면 전송 안 함(로컬 판정)</td>
+<td>D1</td>
+<td>B(절단) · A(나머지)</td>
+</tr>
+<tr>
+<td>정복률</td>
+<td>우리 동네(행정동 1개) 누적: Σ 달린 길 길이 ÷ 동 총 길이</td>
+<td>A3 · D1</td>
+<td>A</td>
+</tr>
+<tr>
+<td>분석 대기열</td>
+<td>오프라인 · 503 · 연결 실패 → 대기열 · 지수 백오프 재시도 · D1 "분석
+중"</td>
+<td>D1 · Z1</td>
+<td>B</td>
+</tr>
+<tr>
+<td>기록 불러오기</td>
+<td>외부 기록 읽기 → 원본 ID로 중복 확인 → 1건씩
+<code>/match</code>(IMPORT) · 재개 지점 저장</td>
+<td>A4-3</td>
+<td>A</td>
+</tr>
+<tr>
+<td>기록 삭제</td>
+<td><code>run_segments</code>로 탐험 · 동 결과 재계산</td>
+<td>D2</td>
+<td>A</td>
+</tr>
+<tr>
+<td>내보내기/가져오기</td>
+<td>로컬 DB를 파일 하나로 · OS 공유 시트 · 스키마 버전 포함</td>
+<td>E0</td>
+<td>B</td>
+</tr>
+<tr>
+<td>GPX 내보내기</td>
+<td>원본 트랙 → GPX (사용자가 직접)</td>
+<td>D2</td>
+<td>B</td>
+</tr>
+</tbody>
+</table></div>
+
+</section>
+<section><h2 id="7-서버-공통-b">7. 서버 공통 <span class="pill pb">B</span></h2>
+<h3 id="71-과부하-보호">7.1 과부하 보호</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>장치</th>
+<th>기준</th>
+<th>초과 시</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>동시 실행 상한</td>
+<td>CPU 코어 수 · 자리 대기 2초</td>
+<td>503 <code>SERVER_BUSY</code> + Retry-After</td>
+</tr>
+<tr>
+<td>대량 처리 (IMPORT · REMATCH)</td>
+<td>서버 전체 동시 1건</td>
+<td>대기 → LIVE 우선</td>
+</tr>
+<tr>
+<td>IP rate limit</td>
+<td><code>/match</code> 분당 30 · <code>/routes</code> 분당 10 ·
+<code>/meta</code> 분당 60</td>
+<td>429 (IP는 메모리 카운터만)</td>
+</tr>
+<tr>
+<td>요청 본문</td>
+<td>256KB (압축 해제 후)</td>
+<td>413 <code>PAYLOAD_TOO_LARGE</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="72-에러">7.2 에러</h3>
+<p>기준: <a href="api-spec-v2.html">API 명세 §2.8</a> (코드 · 화면 매핑은
+API 명세가 우선)</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>HTTP</th>
+<th>code</th>
+<th><code>/match</code> 앱 동작</th>
+<th><code>/routes</code> 화면</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>400</td>
+<td><code>INVALID_REQUEST</code></td>
+<td><code>FAILED</code> · 재시도 안 함</td>
+<td>Z1-2 (앱 버그)</td>
+</tr>
+<tr>
+<td>409</td>
+<td><code>MAP_VERSION_OUTDATED</code></td>
+<td>지도 팩 갱신 후 1회 재시도</td>
+<td>토스트 + 백그라운드 갱신 · B0 유지</td>
+</tr>
+<tr>
+<td>413</td>
+<td><code>PAYLOAD_TOO_LARGE</code> · <code>TOO_MANY_POINTS</code> ·
+<code>TOO_MANY_SEGMENTS</code></td>
+<td><code>FAILED</code> · 재시도 안 함</td>
+<td>Z1-2 (앱 버그)</td>
+</tr>
+<tr>
+<td>422</td>
+<td><code>OUT_OF_SERVICE_AREA</code> · <code>MATCH_FAILED</code></td>
+<td><code>NO_MATCH</code> · 기록은 저장 · 정복 반영 없음 (D1 안내)</td>
+<td>토스트 · B0 유지</td>
+</tr>
+<tr>
+<td>429</td>
+<td><code>RATE_LIMITED</code></td>
+<td>Retry-After 후 백오프 재시도</td>
+<td>Z1-2</td>
+</tr>
+<tr>
+<td>500</td>
+<td><code>INTERNAL_ERROR</code></td>
+<td><code>FAILED</code> · 다음 <code>REMATCH</code> 때 재시도</td>
+<td>Z1-2</td>
+</tr>
+<tr>
+<td>503</td>
+<td><code>SERVER_BUSY</code> · <code>ENGINE_UNAVAILABLE</code></td>
+<td>대기열 · 백오프 재시도 · D1 분석 중</td>
+<td>Z1-2</td>
+</tr>
+<tr>
+<td>—</td>
+<td>(연결 실패)</td>
+<td>대기열 유지 · 연결 시 재시도</td>
+<td>Z1-1</td>
+</tr>
+<tr>
+<td>—</td>
+<td>(앱 타임아웃 <code>/routes</code> 10초 · <code>/match</code>
+15초)</td>
+<td>백오프 재시도</td>
+<td>Z0-1 → Z1-2</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><code>/routes</code> 결과 0개는 에러가 아니다: 200 +
+<code>warnings</code> (<code>DESTINATION_FARTHER_THAN_DISTANCE</code> ·
+<code>NO_ROUTE_FOUND</code>) → B1-1</li>
+</ul>
+<h3 id="73-배포--지도-버전-교체">7.3 배포 · 지도 버전 교체</h3>
+<pre class="flow"><code>① 새 지도 파일 생성 + 불변식 통과                (A)
+② 정확도 평가 통과                              (A: 판정 · B: 추천)
+③ 서버 배포 (현재 + 직전 버전 탑재)              (B)
+④ 기동 검증 (파일 해시 · 설정 해시 불일치 → 기동 거부)
+⑤ CDN 지도 · 서울 인덱스 · config.json 교체      (반드시 서버 배포 이후)
+     └─ 문제 시 → 직전 이미지 + 직전 config로 롤백</code></pre>
+<h3 id="74-기능-요구사항">7.4 기능 요구사항</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>우선순위</th>
+<th>요구사항</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td><code>/match</code> · <code>/routes</code> 입력 검증 · 에러
+응답</td>
+<td>API 명세 기준</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>동시 실행 상한 + 대량 처리 1건 제한</td>
+<td>2 vCPU · 4GB 1대</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>IP rate limit + 실제 클라이언트 IP</td>
+<td></td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>기동 시 해시 검증 · 헬스체크(ready = 로드 + 워밍업)</td>
+<td></td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td><code>GET /meta</code>: 지원 지도 버전 · 상한값 · 필터 목록</td>
+<td>config 캐시 지연 대비</td>
+</tr>
+<tr>
+<td><span class="pr P1">P1</span></td>
+<td>부하 테스트 → <code>/routes</code> p95 ≤ 2초 · <code>/match</code>
+p95 ≤ 3초 확정</td>
+<td>앱 타임아웃 10초 · 15초 (API 명세 §2.7)</td>
+</tr>
+<tr>
+<td><span class="pr P1">P1</span></td>
+<td>배포 · 롤백 리허설</td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+
+</section>
+<section><h2 id="8-프라이버시--스토어-심사-b">8. 프라이버시 · 스토어 심사
+<span class="pill pb">B</span></h2>
+<h3 id="81-보장-항목">8.1 보장 항목</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>위치</th>
+<th>조치</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>앱 → 서버</td>
+<td>무작위 절단 · 시각 제거 · 식별자 없음 · 좌표는 POST 본문만</td>
+</tr>
+<tr>
+<td>서버 메모리</td>
+<td>요청 처리 후 폐기 · 저장소 코드 없음</td>
+</tr>
+<tr>
+<td>로그 · 프록시 · LB</td>
+<td>요청 본문 미기록 · 예외는 클래스 이름만</td>
+</tr>
+<tr>
+<td>에러 추적</td>
+<td>본문 수집 끔 · 메시지 · breadcrumb 제거</td>
+</tr>
+<tr>
+<td>JVM</td>
+<td>힙 덤프 금지</td>
+</tr>
+<tr>
+<td>제3자</td>
+<td>외부 API 호출 없음</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="82-스토어-심사">8.2 스토어 심사</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>항목</th>
+<th>내용</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>로그인</td>
+<td><strong>요구 없음</strong> · 계정이 없으니 탈퇴 기능 의무 없음 ·
+Apple 로그인 의무 없음</td>
+</tr>
+<tr>
+<td>Play 데이터 보안</td>
+<td>위치 "수집" 신고 · <strong>일시적 처리 · 공유 없음 · 전송
+암호화</strong></td>
+</tr>
+<tr>
+<td>Health Connect</td>
+<td>권한 신고서 + 사용 사유 (A4)</td>
+</tr>
+<tr>
+<td>러닝 중 위치</td>
+<td>Android 14+ 포그라운드 서비스(location) 신고 · "항상 허용"
+미사용</td>
+</tr>
+<tr>
+<td>iOS</td>
+<td>위치 사용 사유 · 러닝 중 백그라운드 위치 모드 · HealthKit 사유</td>
+</tr>
+<tr>
+<td>개인정보처리방침</td>
+<td>URL 필수 · "저장하지 않고 즉시 폐기 · 제3자 미제공"</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="83-기능-요구사항">8.3 기능 요구사항</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>우선순위</th>
+<th>요구사항</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>좌표 무로그 자동 테스트 (정상 · 깨진 JSON · 지역 밖 · 끊긴
+경로)</td>
+<td></td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>앱 절단 규칙 명세 + 정답 예시</td>
+<td>앱 팀 전달</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>스토어 심사 문구 · 데이터 보안 양식 초안</td>
+<td></td>
+</tr>
+<tr>
+<td><span class="pr P1">P1</span></td>
+<td>재식별 실험: 고정 반경 vs 무작위 절단</td>
+<td>절단 길이 근거</td>
+</tr>
+</tbody>
+</table></div>
+
+</section>
+<section><h2 id="9-역할-분담-제안">9. 역할 분담 (제안)</h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>구분</th>
+<th>A — 지도 데이터 · 정복 판정</th>
+<th>B — 추천 · 서빙 · 프라이버시</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>서버 API</td>
+<td><code>/match</code>의 속 (판정 로직)</td>
+<td><code>/routes</code>의 속 + 두 API의 겉 + <code>/meta</code></td>
+</tr>
+<tr>
+<td>서버 밖</td>
+<td>지도 파이프라인 · 서울 인덱스</td>
+<td>배포 · 운영 · 스토어 심사 문서</td>
+</tr>
+<tr>
+<td>연구</td>
+<td>실제 GPS 판정 정확도</td>
+<td>재식별 실험 (절단 길이)</td>
+</tr>
+<tr>
+<td>앱 팀 전달</td>
+<td>GPS 필터 · 로컬 판정 · 정복률 · 불러오기 규칙</td>
+<td>API 명세 · 절단 · 대기열 · 내보내기 규칙</td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li><strong>둘이 만나는 곳</strong>: A의 지도 파일을 B의 서버가 불러옴 ·
+A의 판정 엔진을 B의 API가 호출함 · <code>milestones</code>용 이름
+데이터</li>
+<li>→ "지도 파일 형식" · "엔진 호출 모양" 두 가지만 먼저 맞추면 각자
+진행</li>
+</ul>
+
+</section>
+<section><h2 id="10-앱-로컬-데이터-참고">10. 앱 로컬 데이터 (참고)</h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>테이블</th>
+<th>주요 내용</th>
+<th>비고</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>runs</code></td>
+<td>시작 · 종료 · 거리 · 시간 · 페이스 · 구간 기록 · 처리 상태(분석 중 ·
+완료 · 실패) · 출처 · 외부 ID</td>
+<td>외부 ID unique (불러오기 중복 방지) · 칼로리 1차 없음</td>
+</tr>
+<tr>
+<td><code>run_tracks</code></td>
+<td>원본 GPS (러닝당 압축 1건)</td>
+<td><strong>기기 밖으로 안 나감</strong></td>
+</tr>
+<tr>
+<td><code>run_segments</code></td>
+<td>러닝별 달린 길 번호 (서버 · 로컬 판정)</td>
+<td>진실의 원천</td>
+</tr>
+<tr>
+<td><code>explored_segments</code></td>
+<td>달린 길 · 동 코드 · 길이</td>
+<td><code>run_segments</code>에서 재계산</td>
+</tr>
+<tr>
+<td><code>run_region_results</code></td>
+<td>동별 새 길 · 탐험률 before → after</td>
+<td>재계산 가능</td>
+</tr>
+<tr>
+<td><code>saved_courses</code></td>
+<td>추천 응답 1건 통째로 · 이름</td>
+<td>정렬은 그때그때 계산</td>
+</tr>
+<tr>
+<td><code>settings</code></td>
+<td>우리 동네 · 지도 버전 · 약관 동의 버전·시각 · 표시명 · 불러오기 재개
+지점 · 마지막 내보내기</td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+<ul>
+<li>백업: OS 백업 + <strong>기록 내보내기 · 가져오기</strong> (기기 이동
+· Android 25MB 한도 대응)</li>
+</ul>
+
+</section>
+<section><h2 id="11-디자인-변경-요청-요약">11. 디자인 변경 요청 (요약)</h2>
+<p>자세한 내용: <a
+href="figma-wireframe/design-change-requests.html">design-change-requests.md</a></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>우선순위</th>
+<th>화면</th>
+<th>요청</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>L0 · L3 · E0-1 · E1-2 · E1-1</td>
+<td>로그인 · 계정 등록 · 로그아웃 · 탈퇴 · 닉네임 중복 확인 삭제 →
+데이터 초기화 · 내보내기/가져오기</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>B0</td>
+<td>장소 검색 → 지도 탭 선택 · 동 이름 라벨</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>B0 · B0-1 · B1 · A2</td>
+<td>신호 적은 길 필터 숨김</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>C0 · C0-1</td>
+<td>턴바이턴 배너 → 이탈 경고 배너</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>D1</td>
+<td>"분석 중" 상태 추가</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>D2</td>
+<td>칼로리 숨김</td>
+</tr>
+<tr>
+<td><span class="pr P0">P0</span></td>
+<td>A4</td>
+<td>iOS HealthKit · GPX 불러오기 화면</td>
+</tr>
+<tr>
+<td><span class="pr P1">P1</span></td>
+<td>전체</td>
+<td><code>B0-1</code> ID 중복 · 필터 라벨 · 거리 소수 자리 · 단위 표기
+통일</td>
+</tr>
+</tbody>
+</table></div>
+
+</section>
+<section><h2 id="12-미결정-사항">12. 미결정 사항</h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>항목</th>
+<th>기본값</th>
+<th>결정 주체</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>첫 서비스 지역</td>
+<td>개발은 서교동 테스트 지역</td>
+<td>기획</td>
+</tr>
+<tr>
+<td>앱 스택</td>
+<td>서버 영향 없음</td>
+<td>앱 팀</td>
+</tr>
+<tr>
+<td>이탈 경고 기준 · 자동 일시정지</td>
+<td>50m · 30초 (config · 실측 후 조정) · 자동 일시정지 없음</td>
+<td>기획 · 디자인</td>
+</tr>
+<tr>
+<td>공유 채널</td>
+<td>이미지 저장 + OS 공유 시트</td>
+<td>기획</td>
+</tr>
+<tr>
+<td>역할 A · B 배정</td>
+<td>제안안</td>
+<td>백엔드 둘</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+</div>
+<footer><div class="wrap">원본: <code>docs/backend-spec.md</code></div></footer>
+<script>
+(function(){var K='runveal-spec-theme',r=document.documentElement,t=null;try{t=localStorage.getItem(K)}catch(e){}
+if(t==='light'||t==='dark')r.setAttribute('data-theme',t);
+document.getElementById('theme').addEventListener('click',function(){var c=r.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');var n=c==='dark'?'light':'dark';r.setAttribute('data-theme',n);try{localStorage.setItem(K,n)}catch(e){}})})();
+</script>
+</body>
+</html>
+
