@@ -40,6 +40,11 @@ public final class AdminAreas {
     return property(lat, lng, "gu");
   }
 
+  /** 그 좌표가 속한 행정동 이름. */
+  public Optional<String> nameAt(double lat, double lng) {
+    return property(lat, lng, "name");
+  }
+
   private Optional<String> property(double lat, double lng, String key) {
     return index.query(lat, lng).stream()
         .map(area -> area.getProperties().get(key))
