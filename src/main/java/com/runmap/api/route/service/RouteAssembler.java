@@ -92,7 +92,7 @@ public class RouteAssembler {
 
   private record Segments(List<Piece> pieces, double parkM, double riverM) {}
 
-  // 점 사이 구간마다 종류를 정한다: 공원·하천 > 새 길 > 이름 있는 도로 (D9)
+  // 점 사이 구간마다 종류를 정한다: 공원·하천 > 새 길 > 이름 있는 도로 (D9). 새 길도 도로명을 담는다
   private Segments segments(
       PointList pl, Map<String, List<PathDetail>> details, Set<Long> explored) {
     int n = pl.size() - 1;
@@ -122,12 +122,14 @@ public class RouteAssembler {
           name = areaNames.nameAt(midLat, midLng, "river").orElse(null);
         }
       }
+      String road = street[i] instanceof String s && !s.isBlank() ? s : null;
       if (kind == null && explored != null && isNew(edge[i], explored)) {
         kind = MilestoneKind.NEW_ROAD;
+        name = road;
       }
-      if (kind == null && street[i] instanceof String s && !s.isBlank()) {
+      if (kind == null && road != null) {
         kind = MilestoneKind.ROAD;
-        name = s;
+        name = road;
       }
       int start = (int) Math.round(cum);
       cum += len;
