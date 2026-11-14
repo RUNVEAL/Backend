@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,7 +24,7 @@ public class SegmentIds {
 
   private final SegmentMap map;
 
-  public SegmentIds(GraphHopper gh, MapProperties props) {
+  public SegmentIds(GraphHopper gh, MapProperties props, Environment env) {
     Path file = Path.of(props.graphLocation(), "segments.bin");
     if (Files.exists(file)) {
       try {
@@ -30,8 +32,12 @@ public class SegmentIds {
       } catch (IOException e) {
         throw new IllegalStateException("failed to load " + file, e);
       }
-    } else {
+    } else if (env.acceptsProfiles(Profiles.of("test", "local"))) {
+      // 개발·테스트에서만 identity 허용. 운영에서 조용히 identity 로 가면 모든 segmentId 가 어긋나 정복률이 깨진다.
       this.map = SegmentMap.identity(gh.getBaseGraph().getEdges());
+    } else {
+      throw new IllegalStateException(
+          "segments.bin not found at " + file + " (운영에서 identity fallback 금지)");
     }
   }
 

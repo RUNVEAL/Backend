@@ -8,16 +8,23 @@ import com.graphhopper.GraphHopper;
 import com.graphhopper.matching.MapMatching;
 import com.graphhopper.matching.MatchResult;
 import com.graphhopper.matching.Observation;
+import com.graphhopper.storage.BaseGraph;
 import com.graphhopper.util.PointList;
 import com.runmap.api.global.error.BusinessException;
 import com.runmap.api.global.error.ErrorCode;
 import com.runmap.api.map.domain.AdminAreas;
 import com.runmap.api.map.domain.MapGraphFactory;
 import com.runmap.api.map.domain.SegmentIds;
+import com.runmap.api.map.pipeline.SegmentBuilder;
 import com.runmap.api.match.dto.MatchResponse;
 import com.runmap.api.match.service.MatchService;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -87,6 +94,58 @@ class MatchServiceTest {
 
     assertThat(res.matchedPath()).isNotEmpty();
     assertThat(res.matchedPath().get(0)).hasSize(2); // [lng, lat]
+  }
+
+  @Test
+  void acceptsSegmentOnlyWhenCoverageMeetsThreshold() {
+    long[] segByEdge = SegmentBuilder.build(gh);
+    BaseGraph graph = gh.getBaseGraph();
+
+    // edge가 2개 이상인 구간 하나 (짧은 edge 하나는 ≤50% < 60%)
+    Map<Long, List<Integer>> bySegment = new LinkedHashMap<>();
+    for (int e = 0; e < segByEdge.length; e++) {
+      if (segByEdge[e] >= 0) {
+        bySegment.computeIfAbsent(segByEdge[e], k -> new ArrayList<>()).add(e);
+      }
+    }
+    Map.Entry<Long, List<Integer>> multi =
+        bySegment.entrySet().stream()
+            .filter(x -> x.getValue().size() >= 2)
+            .findFirst()
+            .orElseThrow();
+    long seg = multi.getKey();
+    List<Integer> edges = multi.getValue();
+
+    // 전체 edge 매칭(커버리지 100%) → 인정
+    Map<Long, Set<Integer>> full = Map.of(seg, new LinkedHashSet<>(edges));
+    assertThat(MatchService.acceptedSegments(graph, bySegment::get, full)).contains(seg);
+
+    // 가장 짧은 edge 하나만 매칭(<60%) → 제외
+    int shortest =
+        edges.stream()
+            .min(
+                Comparator.comparingDouble(
+                    e -> graph.getEdgeIteratorState(e, Integer.MIN_VALUE).getDistance()))
+            .orElseThrow();
+    Map<Long, Set<Integer>> partial = Map.of(seg, new LinkedHashSet<>(Set.of(shortest)));
+    assertThat(MatchService.acceptedSegments(graph, bySegment::get, partial)).doesNotContain(seg);
+  }
+
+  @Test
+  void splitsRunAtLargeGpsGap() {
+    // 앞 두 점은 ~9m, 세 번째는 ~560m 점프 → 500m 초과 간격에서 끊겨 2개 run
+    List<double[]> points =
+        List.of(
+            new double[] {126.9236, 37.5552},
+            new double[] {126.9237, 37.5552},
+            new double[] {126.9300, 37.5552},
+            new double[] {126.9301, 37.5552});
+
+    List<List<double[]>> runs = MatchService.splitOnGaps(points);
+
+    assertThat(runs).hasSize(2);
+    assertThat(runs.get(0)).hasSize(2);
+    assertThat(runs.get(1)).hasSize(2);
   }
 
   @Test
