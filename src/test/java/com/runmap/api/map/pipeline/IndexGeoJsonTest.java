@@ -29,7 +29,9 @@ class IndexGeoJsonTest {
   }
 
   @Test
-  void simplifiesDenseBoundaries(@TempDir Path dir) throws IOException {
+  void preservesSourceGeometryWithoutSimplifying(@TempDir Path dir) throws IOException {
+    // 동별 단순화는 인접 동의 공유 경계를 제각기 줄여 "2겹"을 만든다. IndexGeoJson 은 경계를 건드리지
+    // 않고 그대로 통과시키고, 단순화는 토폴로지 보존(mapshaper) 단계가 downstream 에서 맡는다.
     Path src = dir.resolve("dong.geojson");
     Files.writeString(src, denseSquareDong()); // 변 위에 촘촘한 점이 깔린 사각형 경계
     MapIndex index = new MapIndex("v", Map.of("A", 100L), Map.of("G1", 100L));
@@ -37,16 +39,13 @@ class IndexGeoJsonTest {
 
     IndexGeoJson.write(out, src, index);
 
-    int before = pointCount(src);
-    int after = pointCount(out);
-    assertThat(after).as("직선 위 점이 제거돼 좌표가 크게 줄어야 한다").isLessThan(before / 2);
-    assertThat(after).as("사각형 모서리는 남아야 한다(유효 폴리곤)").isGreaterThanOrEqualTo(4);
-    assertThat(Files.readString(out)).contains("\"lengthM\":100"); // 길이 정보는 유지
+    assertThat(pointCount(out)).as("경계 점은 원본 그대로 유지돼야 한다").isEqualTo(pointCount(src));
+    assertThat(Files.readString(out)).contains("\"lengthM\":100"); // 길이 정보는 주입
   }
 
   @Test
-  void roundsCoordinatesToSixDecimals(@TempDir Path dir) throws IOException {
-    // 소수 12~14자리의 과한 정밀도 좌표 (원본 vuski 데이터처럼)
+  void preservesFullCoordinatePrecision(@TempDir Path dir) throws IOException {
+    // 소수 12~14자리의 원본 좌표(vuski 데이터)를 반올림 없이 그대로 보존한다.
     Path src = dir.resolve("dong.geojson");
     Files.writeString(
         src,
@@ -61,26 +60,13 @@ class IndexGeoJsonTest {
 
     IndexGeoJson.write(out, src, index);
 
-    JsonNode root = MAPPER.readTree(Files.readString(out));
-    assertRoundedToSixDecimals(root.get("features").get(0).get("geometry").get("coordinates"));
+    assertThat(Files.readString(out))
+        .as("원본 좌표를 반올림 없이 그대로 유지해야 한다")
+        .contains("126.976888842748")
+        .contains("37.575650779448");
   }
 
-  private static void assertRoundedToSixDecimals(JsonNode coords) {
-    if (coords.get(0).isNumber()) {
-      for (JsonNode v : coords) {
-        double c = v.asDouble();
-        assertThat(Math.abs(c - Math.round(c * 1e6) / 1e6))
-            .as("좌표는 소수 6자리로 반올림돼야 한다: " + c)
-            .isLessThan(1e-9);
-      }
-    } else {
-      for (JsonNode c : coords) {
-        assertRoundedToSixDecimals(c);
-      }
-    }
-  }
-
-  /** 각 변에 점 20개씩 깔린 사각형(=직선 위 중복점). 단순화되면 모서리만 남는다. */
+  /** 각 변에 점 20개씩 깔린 사각형(=직선 위 중복점). 단순화 없이 그대로 보존되는지 확인용. */
   private static String denseSquareDong() {
     double[][] corners = {{0, 0}, {0.01, 0}, {0.01, 0.01}, {0, 0.01}};
     StringBuilder ring = new StringBuilder("[");
