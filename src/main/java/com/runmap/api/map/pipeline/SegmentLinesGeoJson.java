@@ -7,6 +7,7 @@ import com.graphhopper.util.EdgeIteratorState;
 import com.graphhopper.util.FetchMode;
 import com.graphhopper.util.PointList;
 import com.runmap.api.map.domain.AdminAreas;
+import com.runmap.api.map.domain.Segments;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,6 +31,10 @@ public final class SegmentLinesGeoJson {
   private record Feature(String type, Geometry geometry, Map<String, Object> properties) {}
 
   private record Collection(String type, List<Feature> features) {}
+
+  /** 동 팩 FeatureCollection — 파일 이름(동 코드) 외에 동/구/이름을 최상위에 담아 앱이 번들 의존 없이 쓰게 한다. */
+  private record DongCollection(
+      String type, String dong, String gu, String name, List<Feature> features) {}
 
   private SegmentLinesGeoJson() {}
 
@@ -67,6 +72,50 @@ public final class SegmentLinesGeoJson {
       writeCollection(outDir.resolve("segments-" + entry.getKey() + ".geojson"), features);
     }
     return List.copyOf(segmentsByGu.keySet());
+  }
+
+  /**
+   * segment를 동별로 나눠 {@code segments-{동코드}.geojson}로 쓴다. 분할 기준은 segment 전체 centroid가 속한 동 —
+   * 분모(RegionTotals)와 {@code /match}의 {@code dongBySegment}와 같은 규칙이라, 앱이 응답의 동 코드로 항상 맞는 파일을 받는다.
+   * 어느 동에도 안 속한 segment는 건너뛴다.
+   */
+  public static List<String> writeByDong(
+      Path outDir, GraphHopper gh, long[] segmentIdByEdge, AdminAreas areas) throws IOException {
+    BaseGraph graph = gh.getBaseGraph();
+    NodeAccess nodes = graph.getNodeAccess();
+    Map<Long, List<Integer>> edgesBySegment = groupEdges(segmentIdByEdge);
+
+    // 1) segmentId → 동 (centroid 규칙). 동별 대표 centroid도 모아 둔다(구·이름 조회용)
+    Map<String, List<Long>> segmentsByDong = new LinkedHashMap<>();
+    Map<String, double[]> sampleByDong = new LinkedHashMap<>();
+    edgesBySegment.forEach(
+        (segmentId, edges) -> {
+          double[] center = Segments.centroid(graph, nodes, edges);
+          areas
+              .codeAt(center[0], center[1])
+              .ifPresent(
+                  dong -> {
+                    segmentsByDong.computeIfAbsent(dong, key -> new ArrayList<>()).add(segmentId);
+                    sampleByDong.putIfAbsent(dong, center);
+                  });
+        });
+
+    // 2) 동 단위로 지오메트리 생성·기록 (한 동 분량만 메모리에 올렸다 해제)
+    for (Map.Entry<String, List<Long>> entry : segmentsByDong.entrySet()) {
+      String dong = entry.getKey();
+      List<Feature> features = new ArrayList<>(entry.getValue().size());
+      for (long segmentId : entry.getValue()) {
+        features.add(buildFeature(graph, segmentId, edgesBySegment.get(segmentId)));
+      }
+      double[] sample = sampleByDong.get(dong);
+      String gu = areas.guAt(sample[0], sample[1]).orElse(null);
+      String name = areas.nameAt(sample[0], sample[1]).orElse(null);
+      Files.writeString(
+          outDir.resolve("segments-" + dong + ".geojson"),
+          MAPPER.writeValueAsString(
+              new DongCollection("FeatureCollection", dong, gu, name, features)));
+    }
+    return List.copyOf(segmentsByDong.keySet());
   }
 
   private static void writeCollection(Path out, List<Feature> features) throws IOException {
