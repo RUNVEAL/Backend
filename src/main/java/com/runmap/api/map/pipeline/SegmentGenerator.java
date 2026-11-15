@@ -48,9 +48,12 @@ public final class SegmentGenerator {
       SegmentsFile.write(dir.resolve("segments.bin"), segmentIdByEdge);
       MapIndexFile.write(dir.resolve("index.json"), index);
       IndexGeoJson.write(dir.resolve("index.geojson"), Path.of(adminDir, "dong.geojson"), index);
+      // 전환기: 구 파일(구버전 앱)과 동 파일(신규 앱)을 함께 낸다. 다음 버전에 구 파일은 중단한다.
       List<String> gus = SegmentLinesGeoJson.writeByGu(dir, gh, segmentIdByEdge, areas);
+      List<String> dongs = SegmentLinesGeoJson.writeByDong(dir, gh, segmentIdByEdge, areas);
       List<String> files = new ArrayList<>(List.of("segments.bin", "index.json", "index.geojson"));
       gus.forEach(gu -> files.add("segments-" + gu + ".geojson"));
+      dongs.forEach(dong -> files.add("segments-" + dong + ".geojson"));
       ManifestFile.write(dir.resolve("manifest.json"), Manifest.of(version, files));
 
       long segments = Arrays.stream(segmentIdByEdge).filter(s -> s >= 0).distinct().count();
