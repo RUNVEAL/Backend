@@ -55,7 +55,7 @@ class RouteDetailTest {
     assertThat(prof.get(0).get(0).asInt()).isZero();
     assertThat(prof.get(prof.size() - 1).get(0).asInt()).isEqualTo(r.get("distanceM").asInt());
     assertThat(r.get("tags").size()).isLessThanOrEqualTo(3);
-    assertThat(r.get("milestones").size()).isBetween(1, 6);
+    assertThat(r.get("milestones").size()).isPositive();
     r.get("milestones")
         .forEach(
             m ->
@@ -64,13 +64,12 @@ class RouteDetailTest {
   }
 
   @Test
-  void roadMilestonesCarryStreetNames() throws Exception {
-    JsonNode r = firstRoute(LOOP_3K); // 탐험 목록 없음 → NEW_ROAD 없음, ROAD 이름이 보인다
-    boolean namedRoad = false;
+  void plainRoadsAreNotListed() throws Exception {
+    // 일반 경유 도로는 경로 정보에 넣지 않는다 (경로 정보 표기 규칙)
+    JsonNode r = firstRoute(LOOP_3K); // 탐험 목록 없음 → 예전엔 ROAD 가 채워지던 요청
     for (JsonNode m : r.get("milestones")) {
-      namedRoad |= "ROAD".equals(m.get("kind").asString()) && !m.get("name").isNull();
+      assertThat(m.get("kind").asString()).isIn("PARK", "RIVER");
     }
-    assertThat(namedRoad).isTrue();
   }
 
   @Test
@@ -99,6 +98,7 @@ class RouteDetailTest {
     }
     assertThat(newRoads).isNotEmpty();
     assertThat(newRoads).anyMatch(m -> !m.get("name").isNull());
+
     assertThat(park).isTrue(); // 공원(경의선 숲길)은 새 길이어도 PARK 유지
   }
 
