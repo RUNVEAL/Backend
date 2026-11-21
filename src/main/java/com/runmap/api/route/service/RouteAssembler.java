@@ -1,6 +1,8 @@
 package com.runmap.api.route.service;
 
+import com.graphhopper.GraphHopper;
 import com.graphhopper.ResponsePath;
+import com.graphhopper.storage.index.Snap;
 import com.graphhopper.util.DistanceCalc;
 import com.graphhopper.util.DistanceCalcEarth;
 import com.graphhopper.util.PointList;
@@ -35,12 +37,19 @@ public class RouteAssembler {
       List.of(EDGE_ID, STREET_NAME, AreaEncodedValues.NEAR_PARK, AreaEncodedValues.NEAR_RIVER);
   static final int ELEVATION_STEP_M = 100; // D10
 
+  // 이름 없는 골목의 "근처 도로"로 쓸 수 있는 최대 거리. 이보다 멀면 근처라 부르기 어려워 이름 없이 둔다
+  static final double NEARBY_ROAD_MAX_M = 300;
+
+  static final String NEARBY_SUFFIX = " 근처 골목";
+
   private static final DistanceCalc DIST = DistanceCalcEarth.DIST_EARTH;
 
+  private final GraphHopper gh;
   private final SegmentIds segmentIds;
   private final AreaNames areaNames;
 
-  public RouteAssembler(SegmentIds segmentIds, AreaNames areaNames) {
+  public RouteAssembler(GraphHopper gh, SegmentIds segmentIds, AreaNames areaNames) {
+    this.gh = gh;
     this.segmentIds = segmentIds;
     this.areaNames = areaNames;
   }
@@ -71,6 +80,7 @@ public class RouteAssembler {
         RouteTags.of(distanceM, gain, profile, seg.parkM(), seg.riverM(), req.filters());
     List<MilestoneDto> milestones =
         Milestones.build(seg.pieces()).stream()
+            .map(m -> m.name() == null ? nameByNearbyRoad(m, pl) : m)
             .map(m -> new MilestoneDto(m.name(), m.kind().name(), m.startM(), m.endM()))
             .toList();
 
@@ -92,7 +102,7 @@ public class RouteAssembler {
 
   private record Segments(List<Piece> pieces, double parkM, double riverM) {}
 
-  // 점 사이 구간마다 종류를 정한다: 공원·하천 > 새 길 > 이름 있는 도로 (D9). 새 길도 도로명을 담는다
+  // 점 사이 구간마다 종류를 정한다: 공원·하천 > 새 길 (D9). 새 길은 도로명을 담고, 일반 도로는 목록에 넣지 않는다
   private Segments segments(
       PointList pl, Map<String, List<PathDetail>> details, Set<Long> explored) {
     int n = pl.size() - 1;
@@ -127,10 +137,6 @@ public class RouteAssembler {
         kind = MilestoneKind.NEW_ROAD;
         name = road;
       }
-      if (kind == null && road != null) {
-        kind = MilestoneKind.ROAD;
-        name = road;
-      }
       int start = (int) Math.round(cum);
       cum += len;
       if (kind != null) {
@@ -138,6 +144,42 @@ public class RouteAssembler {
       }
     }
     return new Segments(pieces, parkM, riverM);
+  }
+
+  /**
+   * 이름 없는 새 길(골목) → 그 덩어리 한가운데에서 가장 가까운 이름 있는 도로로 "서울숲2길 근처 골목". 앱은 새 길의 {@code name} 을 그대로 "새 길"
+   * 옆에 쓰므로 문구까지 서버가 만든다. 공원·하천은 이름이 없으면 그대로 둔다 (앱이 "공원"·"하천길"로 쓴다).
+   */
+  Piece nameByNearbyRoad(Piece m, PointList pl) {
+    if (m.kind() != MilestoneKind.NEW_ROAD) {
+      return m;
+    }
+    double[] mid = pointAt(pl, (m.startM() + m.endM()) / 2.0);
+    Snap snap =
+        gh.getLocationIndex()
+            .findClosest(mid[0], mid[1], e -> e.getName() != null && !e.getName().isBlank());
+    if (!snap.isValid() || snap.getQueryDistance() > NEARBY_ROAD_MAX_M) {
+      return m;
+    }
+    String name = snap.getClosestEdge().getName() + NEARBY_SUFFIX;
+    return new Piece(m.kind(), name, m.startM(), m.endM());
+  }
+
+  // 경로 시작부터 distM 떨어진 경로 위 점 {lat, lng}
+  private static double[] pointAt(PointList pl, double distM) {
+    double cum = 0;
+    for (int i = 0; i < pl.size() - 1; i++) {
+      double len = DIST.calcDist(pl.getLat(i), pl.getLon(i), pl.getLat(i + 1), pl.getLon(i + 1));
+      if (cum + len >= distM && len > 0) {
+        double t = (distM - cum) / len;
+        return new double[] {
+          pl.getLat(i) + t * (pl.getLat(i + 1) - pl.getLat(i)),
+          pl.getLon(i) + t * (pl.getLon(i + 1) - pl.getLon(i))
+        };
+      }
+      cum += len;
+    }
+    return new double[] {pl.getLat(pl.size() - 1), pl.getLon(pl.size() - 1)};
   }
 
   private boolean isNew(Object edge, Set<Long> explored) {
